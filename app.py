@@ -927,8 +927,8 @@ with tab_volumen:
         meses_unicos = list(dict.fromkeys(reversed(df_sem["mes_nombre"].tolist())))
 
         # Desplegable de filtros: 12 semanas por defecto + opciones mensuales (ej. ene-2026, feb-2026)
-        col_filtro_v1, col_filtro_v2 = st.columns([1.6, 2.4])
-        with col_filtro_v1:
+        col_filtro_v, _ = st.columns([1.2, 2.8])
+        with col_filtro_v:
             opciones_periodo = [
                 "⚡ Últimas 12 Semanas (Por defecto)",
                 "⚡ Últimas 4 Semanas (Último mes)",
@@ -943,18 +943,8 @@ with tab_volumen:
                 index=0
             )
 
-        with col_filtro_v2:
-            meses_multi_sel = st.multiselect(
-                "O combinar varios meses (ej. ene-2026, feb-2026...):",
-                meses_unicos,
-                default=[]
-            )
-
         # Aplicar el filtro seleccionado
-        if meses_multi_sel:
-            df_sem_filtrado = df_sem[df_sem["mes_nombre"].isin(meses_multi_sel)]
-            subtitulo_graf = f"Meses seleccionados: {', '.join(meses_multi_sel)} ({len(df_sem_filtrado)} semanas)"
-        elif periodo_sel == "⚡ Últimas 12 Semanas (Por defecto)":
+        if periodo_sel == "⚡ Últimas 12 Semanas (Por defecto)":
             df_sem_filtrado = df_sem.tail(12)
             subtitulo_graf = "Últimas 12 semanas automáticas desde la fecha actual"
         elif periodo_sel == "⚡ Últimas 4 Semanas (Último mes)":
