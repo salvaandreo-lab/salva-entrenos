@@ -514,11 +514,11 @@ with tab_home:
             st.markdown(f"""
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #F1F5F9;">
                 <div>
-                    <div style="font-size: 13px; font-weight: 700; color: #181C20;">{rec['categoria']}</div>
-                    <div style="font-size: 11px; color: #64748B;">{rec['fecha'][:10]}</div>
+                    <div style="font-size: 13px; font-weight: 700; color: #181C20;">{rec.get('categoria', '')}</div>
+                    <div style="font-size: 11px; color: #64748B;">{str(rec.get('fecha', ''))[:10]}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 15px; font-weight: 800; color: #007CC3;">{rec.get('marca') or rec.get('tiempo', '--')}</div>
+                    <div style="font-size: 15px; font-weight: 800; color: #007CC3;">{rec.get('marca', '--')}</div>
                     <div style="font-size: 11px; font-weight: 600; color: #64748B;">{rec.get('ritmo', '--')} min/km</div>
                 </div>
             </div>
