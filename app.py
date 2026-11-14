@@ -518,8 +518,8 @@ with tab_home:
                     <div style="font-size: 11px; color: #64748B;">{rec['fecha'][:10]}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 15px; font-weight: 800; color: #007CC3;">{rec['tiempo']}</div>
-                    <div style="font-size: 11px; font-weight: 600; color: #64748B;">{rec['ritmo']} min/km</div>
+                    <div style="font-size: 15px; font-weight: 800; color: #007CC3;">{rec.get('marca') or rec.get('tiempo', '--')}</div>
+                    <div style="font-size: 11px; font-weight: 600; color: #64748B;">{rec.get('ritmo', '--')} min/km</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
