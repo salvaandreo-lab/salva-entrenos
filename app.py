@@ -316,16 +316,14 @@ def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="",
     )
     return fig
 
-# Pestañas principales organizadas al estilo Garmin Connect
-tab_home, tab_plan, tab_series, tab_records, tab_volumen, tab_historial, tab_chat, tab_importar = st.tabs([
-    "🏠 Inicio (Garmin Connect)",
-    "📋 Plan Entrenador vs. Garmin",
-    "⚡ Análisis de Series",
-    "🏆 Récords Personales (PB)",
-    "📈 Volumen y Carga Semanal",
-    "🎽 Ficha de Sesión e Historial",
+# Pestañas principales organizadas de forma limpia
+tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
+    "🏠 Inicio",
     "💬 Entrenador IA (Chat)",
-    "📥 Sincronizar Garmin"
+    "📋 Plan Entrenador",
+    "⚡ Análisis de Series",
+    "📈 Volumen y Carga Semanal",
+    "👤 Personal"
 ])
 
 # ==================== PESTAÑA 0: INICIO (GARMIN CONNECT) ====================
@@ -735,8 +733,8 @@ with tab_plan:
             st.success("Enlace actualizado correctamente.")
             st.rerun()
 
-# ==================== PESTAÑA 3: RÉCORDS PERSONALES (PB) ====================
-with tab_records:
+# ==================== COMPONENTE: RÉCORDS PERSONALES (PB) ====================
+def render_records_personales():
     st.subheader("🏆 Mejores Marcas Personales (Personal Bests)")
     st.caption("Detección automática de tus récords absolutos registrados en tu reloj Garmin.")
 
@@ -913,8 +911,8 @@ with tab_volumen:
         )
         st.plotly_chart(fig_sem, use_container_width=True, theme=None)
 
-# ==================== PESTAÑA 4: FICHA DE SESIÓN E HISTORIAL ====================
-with tab_historial:
+# ==================== COMPONENTE: HISTORIAL Y FICHA DETALLADA ====================
+def render_historial_sesiones():
     st.subheader("📋 Historial y Ficha Detallada de Entrenamiento")
 
     entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos ORDER BY fecha DESC")
@@ -1207,8 +1205,8 @@ with tab_series:
     else:
         st.info(f"No se han encontrado sesiones con series de {dist_sel}.")
 
-# ==================== PESTAÑA 6: CONECTAR GARMIN ====================
-with tab_importar:
+# ==================== COMPONENTE: SINCRONIZAR GARMIN ====================
+def render_sincronizar_garmin():
     st.subheader("📥 Sincronización y Carga de Entrenamientos")
 
     # Detección de sesión guardada
@@ -1303,3 +1301,22 @@ with tab_importar:
             finally:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
+
+# ==================== PESTAÑA 6: PERSONAL (DESPLEGABLE) ====================
+with tab_personal:
+    col_p_sel, _ = st.columns([1.2, 2.8])
+    with col_p_sel:
+        opcion_personal = st.selectbox(
+            "Seleccionar sección personal:",
+            ["🏆 Récords Personales (PB)", "🎽 Ficha de Sesión e Historial", "📥 Sincronizar Garmin"],
+            index=0
+        )
+
+    st.divider()
+
+    if opcion_personal == "🏆 Récords Personales (PB)":
+        render_records_personales()
+    elif opcion_personal == "🎽 Ficha de Sesión e Historial":
+        render_historial_sesiones()
+    elif opcion_personal == "📥 Sincronizar Garmin":
+        render_sincronizar_garmin()
