@@ -938,50 +938,150 @@ with tab_volumen:
 
     st.divider()
 
-    # 2. Volumen Semanal con media móvil
+    # 2. Volumen Semanal con media móvil y filtros por mes / 12 semanas
     st.markdown("#### 🏃 Kilómetros Semanales (Carga Aguda vs. Crónica)")
+    st.caption("Evolución de kilómetros por semana con línea de tendencia de carga y selector automático.")
     vol_semanal = database.obtener_volumen_semanal()
     if vol_semanal:
         df_sem = pd.DataFrame(vol_semanal)
         df_sem["media_movil_4sem"] = df_sem["total_km"].rolling(window=4, min_periods=1).mean().round(1)
 
-        # Filtro de años para no saturar la vista semanal
-        anios_disponibles = sorted(list(set(s[:4] for s in df_sem["semana"])), reverse=True)
-        anios_sel = st.multiselect("Filtrar por año(s):", anios_disponibles, default=anios_disponibles[:3])
+        meses_es = {
+            1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+            7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic"
+        }
 
-        df_sem_filtrado = df_sem[df_sem["semana"].str[:4].isin(anios_sel)]
+        # Calcular fechas y nombres de meses en español
+        meses_list = []
+        rangos_list = []
+        for s in df_sem["semana"]:
+            try:
+                from datetime import timedelta
+                d_l = datetime.strptime(s + "-1", "%Y-W%W-%w")
+                d_d = d_l + timedelta(days=6)
+                m_nom = f"{meses_es.get(d_l.month, 'mes')}-{d_l.year}"
+                r_nom = f"{d_l.strftime('%d/%m')} - {d_d.strftime('%d/%m')}"
+            except Exception:
+                m_nom = s[:7]
+                r_nom = s
+            meses_list.append(m_nom)
+            rangos_list.append(r_nom)
 
-        fig_sem = go.Figure()
-        fig_sem.add_trace(go.Bar(
-            x=df_sem_filtrado["semana"],
-            y=df_sem_filtrado["total_km"],
-            name="Km Semanales",
-            marker=dict(
-                color="#00B4D8",
-                line=dict(width=0)
-            ),
-            opacity=0.85
-        ))
-        fig_sem.add_trace(go.Scatter(
-            x=df_sem_filtrado["semana"],
-            y=df_sem_filtrado["media_movil_4sem"],
-            mode="lines",
-            name="Media móvil (4 semanas)",
-            line=dict(color="#F2C811", width=3.5)
-        ))
-        aplicar_estilo_powerbi(
-            fig_sem,
-            titulo="Carga de Entrenamiento Semanal",
-            subtitulo="Volumen semanal (barras) vs. Tendencia de 4 semanas (línea de carga)",
-            x_title="Semana",
-            y_title="Kilómetros",
-            altura=400
-        )
-        fig_sem.update_layout(
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000"))
-        )
-        st.plotly_chart(fig_sem, use_container_width=True, theme=None)
+        df_sem["mes_nombre"] = meses_list
+        df_sem["rango_semana"] = rangos_list
+        df_sem["etiqueta_x"] = [f"{r} (S{s.split('-W')[-1]})" for r, s in zip(rangos_list, df_sem["semana"])]
+
+        # Lista de meses disponibles de más reciente a más antiguo
+        meses_unicos = list(dict.fromkeys(reversed(df_sem["mes_nombre"].tolist())))
+
+        # Desplegable de filtros: 12 semanas por defecto + opciones mensuales (ej. ene-2026, feb-2026)
+        col_filtro_v1, col_filtro_v2 = st.columns([1.6, 2.4])
+        with col_filtro_v1:
+            opciones_periodo = [
+                "⚡ Últimas 12 Semanas (Por defecto)",
+                "⚡ Últimas 4 Semanas (Último mes)",
+                "⚡ Últimas 24 Semanas (Semestre)",
+                "⚡ Todo 2026 (Año actual)",
+                "⚡ Todo 2025"
+            ] + meses_unicos
+
+            periodo_sel = st.selectbox(
+                "Filtrar período o mes:",
+                opciones_periodo,
+                index=0
+            )
+
+        with col_filtro_v2:
+            meses_multi_sel = st.multiselect(
+                "O combinar varios meses (ej. ene-2026, feb-2026...):",
+                meses_unicos,
+                default=[]
+            )
+
+        # Aplicar el filtro seleccionado
+        if meses_multi_sel:
+            df_sem_filtrado = df_sem[df_sem["mes_nombre"].isin(meses_multi_sel)]
+            subtitulo_graf = f"Meses seleccionados: {', '.join(meses_multi_sel)} ({len(df_sem_filtrado)} semanas)"
+        elif periodo_sel == "⚡ Últimas 12 Semanas (Por defecto)":
+            df_sem_filtrado = df_sem.tail(12)
+            subtitulo_graf = "Últimas 12 semanas automáticas desde la fecha actual"
+        elif periodo_sel == "⚡ Últimas 4 Semanas (Último mes)":
+            df_sem_filtrado = df_sem.tail(4)
+            subtitulo_graf = "Últimas 4 semanas de entrenamiento"
+        elif periodo_sel == "⚡ Últimas 24 Semanas (Semestre)":
+            df_sem_filtrado = df_sem.tail(24)
+            subtitulo_graf = "Últimas 24 semanas (medio año de progresión)"
+        elif periodo_sel == "⚡ Todo 2026 (Año actual)":
+            df_sem_filtrado = df_sem[df_sem["semana"].str.startswith("2026")]
+            subtitulo_graf = "Temporada 2026 completa"
+        elif periodo_sel == "⚡ Todo 2025":
+            df_sem_filtrado = df_sem[df_sem["semana"].str.startswith("2025")]
+            subtitulo_graf = "Temporada 2025 completa"
+        else:
+            # Mes específico seleccionado directamente (ej. nov-2026, oct-2026, etc.)
+            df_sem_filtrado = df_sem[df_sem["mes_nombre"] == periodo_sel]
+            subtitulo_graf = f"Volumen semanal en {periodo_sel}"
+
+        if not df_sem_filtrado.empty:
+            # Métricas resumen del período seleccionado
+            k_km_tot = df_sem_filtrado["total_km"].sum()
+            k_km_med = df_sem_filtrado["total_km"].mean()
+            k_km_max = df_sem_filtrado["total_km"].max()
+            k_ses_tot = df_sem_filtrado["sesiones"].sum()
+
+            c_vk1, c_vk2, c_vk3, c_vk4 = st.columns(4)
+            c_vk1.metric("Kms en el Período", f"{k_km_tot:.1f} km")
+            c_vk2.metric("Media Semanal", f"{k_km_med:.1f} km/sem")
+            c_vk3.metric("Semana Pico", f"{k_km_max:.1f} km")
+            c_vk4.metric("Sesiones Totales", f"{k_ses_tot} entrenos")
+
+            # Gráfica de barras
+            fig_sem = go.Figure()
+
+            # Usar etiquetas detalladas si son pocas semanas (<= 16), o código ISO si son muchas
+            x_labels = df_sem_filtrado["rango_semana"] if len(df_sem_filtrado) <= 16 else df_sem_filtrado["semana"]
+            text_labels = df_sem_filtrado["total_km"].apply(lambda v: f"{v:.0f}k" if v >= 100 else f"{v:.1f}")
+
+            fig_sem.add_trace(go.Bar(
+                x=x_labels,
+                y=df_sem_filtrado["total_km"],
+                text=text_labels,
+                textposition="outside",
+                textfont=dict(color="#000000", size=12, family="Open Sans, Segoe UI"),
+                name="Km Semanales",
+                marker=dict(
+                    color="#007CC3",
+                    line=dict(width=0)
+                ),
+                opacity=0.9
+            ))
+            fig_sem.add_trace(go.Scatter(
+                x=x_labels,
+                y=df_sem_filtrado["media_movil_4sem"],
+                mode="lines+markers",
+                name="Media móvil (4 semanas)",
+                line=dict(color="#B45309", width=3),
+                marker=dict(size=6, color="#B45309")
+            ))
+
+            max_y_val = max(df_sem_filtrado["total_km"].max(), 50) * 1.18
+
+            aplicar_estilo_powerbi(
+                fig_sem,
+                titulo="Carga de Entrenamiento Semanal",
+                subtitulo=subtitulo_graf,
+                x_title="Semana",
+                y_title="Kilómetros",
+                altura=420
+            )
+            fig_sem.update_layout(
+                yaxis=dict(range=[0, max_y_val]),
+                hovermode="x unified",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000", size=12))
+            )
+            st.plotly_chart(fig_sem, use_container_width=True, theme=None)
+        else:
+            st.info("No hay datos de entrenamientos para el período o mes seleccionado.")
 
 # ==================== COMPONENTE: HISTORIAL Y FICHA DETALLADA ====================
 def render_historial_sesiones():
