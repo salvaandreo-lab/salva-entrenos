@@ -38,6 +38,54 @@ col4.metric("Series e intervalos", stats.get("total_series", 0))
 
 st.divider()
 
+# ==================== HELPERS DE ESTILO POWER BI ====================
+def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="", mostrar_grid_y=True, altura=380):
+    """Aplica la estética profesional, limpia y ejecutiva característica de Microsoft Power BI."""
+    fig.update_layout(
+        title=dict(
+            text=f"<b style='font-size:16px; color:#F0F6FC;'>{titulo}</b><br><span style='font-size:12px; color:#8B949E;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:16px; color:#F0F6FC;'>{titulo}</b>",
+            x=0.01,
+            y=0.96,
+            xanchor="left",
+            yanchor="top"
+        ),
+        plot_bgcolor="rgba(22, 27, 34, 0.7)",
+        paper_bgcolor="rgba(0, 0, 0, 0)",
+        height=altura,
+        margin=dict(l=15, r=15, t=55 if subtitulo else 45, b=35),
+        font=dict(
+            family="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+            color="#C9D1D9",
+            size=12
+        ),
+        xaxis=dict(
+            title=dict(text=x_title, font=dict(size=12, color="#8B949E")),
+            showgrid=False,
+            showline=True,
+            linecolor="rgba(255, 255, 255, 0.12)",
+            linewidth=1,
+            tickfont=dict(size=11, color="#8B949E"),
+            zeroline=False
+        ),
+        yaxis=dict(
+            title=dict(text=y_title, font=dict(size=12, color="#8B949E")),
+            showgrid=mostrar_grid_y,
+            gridcolor="rgba(255, 255, 255, 0.07)",
+            gridwidth=1,
+            showline=False,
+            tickfont=dict(size=11, color="#8B949E"),
+            zeroline=False
+        ),
+        hoverlabel=dict(
+            bgcolor="#1F2430",
+            font_size=12,
+            font_family="Segoe UI, sans-serif",
+            bordercolor="#00B4D8"
+        ),
+        bargap=0.28
+    )
+    return fig
+
 # Pestañas principales
 tab_chat, tab_plan, tab_records, tab_volumen, tab_historial, tab_series, tab_importar = st.tabs([
     "💬 Entrenador IA (Chat)",
@@ -256,16 +304,27 @@ with tab_records:
         df_rec_valid = df_rec.dropna(subset=["ritmo_seg"])
 
         if not df_rec_valid.empty:
+            paleta_pbi = ["#00B4D8", "#0078D4", "#2EC4B6", "#F2C811", "#FF7F50", "#E63946", "#7928CA", "#4361EE"]
             fig_pb = px.bar(
                 df_rec_valid,
                 x="categoria",
                 y="ritmo_seg",
                 color="categoria",
-                title="Curva de Ritmos en tus Récords Personales (segundos / km)",
-                labels={"categoria": "Distancia", "ritmo_seg": "Segundos por km"},
+                color_discrete_sequence=paleta_pbi,
                 text="ritmo"
             )
-            fig_pb.update_traces(textposition='outside')
+            fig_pb.update_traces(
+                textposition='outside',
+                textfont=dict(color="#F0F6FC", size=12, family="Segoe UI"),
+                marker=dict(line=dict(width=0))
+            )
+            aplicar_estilo_powerbi(
+                fig_pb,
+                titulo="Curva de Ritmos en Récords Personales",
+                subtitulo="Ritmo oficial (min/km) conseguido en tus mejores marcas",
+                x_title="Distancia",
+                y_title="Segundos por km"
+            )
             st.plotly_chart(fig_pb, use_container_width=True)
     else:
         st.info("No se han podido calcular los récords con los datos actuales.")
@@ -293,16 +352,28 @@ with tab_volumen:
                 hide_index=True
             )
         with col_va2:
+            df_anual_sorted = df_anual.sort_values("anio")
             fig_anual = px.bar(
-                df_anual.sort_values("anio"),
+                df_anual_sorted,
                 x="anio",
                 y="total_km",
-                text="total_km",
-                title="Volumen Anual Acumulado (km)",
+                text=df_anual_sorted["total_km"].apply(lambda v: f"{v:,.0f}k".replace(",", ".")),
                 color="total_km",
-                color_continuous_scale="Blues"
+                color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#2EC4B6"]]
             )
-            fig_anual.update_traces(textposition='outside')
+            fig_anual.update_traces(
+                textposition='outside',
+                textfont=dict(color="#F0F6FC", size=12, family="Segoe UI"),
+                marker=dict(line=dict(width=0))
+            )
+            fig_anual.update_coloraxes(showscale=False)
+            aplicar_estilo_powerbi(
+                fig_anual,
+                titulo="Volumen Anual Acumulado",
+                subtitulo="Kilómetros totales completados por temporada",
+                x_title="Año",
+                y_title="Kilómetros"
+            )
             st.plotly_chart(fig_anual, use_container_width=True)
 
     st.divider()
@@ -325,22 +396,30 @@ with tab_volumen:
             x=df_sem_filtrado["semana"],
             y=df_sem_filtrado["total_km"],
             name="Km Semanales",
-            marker_color="#1f77b4",
-            opacity=0.75
+            marker=dict(
+                color="#00B4D8",
+                line=dict(width=0)
+            ),
+            opacity=0.85
         ))
         fig_sem.add_trace(go.Scatter(
             x=df_sem_filtrado["semana"],
             y=df_sem_filtrado["media_movil_4sem"],
             mode="lines",
             name="Media móvil (4 semanas)",
-            line=dict(color="#ff7f0e", width=3)
+            line=dict(color="#F2C811", width=3.5)
         ))
+        aplicar_estilo_powerbi(
+            fig_sem,
+            titulo="Carga de Entrenamiento Semanal",
+            subtitulo="Volumen semanal (barras) vs. Tendencia de 4 semanas (línea de carga)",
+            x_title="Semana",
+            y_title="Kilómetros",
+            altura=400
+        )
         fig_sem.update_layout(
-            title="Volumen Semanal con Tendencia (Media 4 Semanas)",
-            xaxis_title="Semana",
-            yaxis_title="Kilómetros",
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#F0F6FC"))
         )
         st.plotly_chart(fig_sem, use_container_width=True)
 
@@ -405,17 +484,32 @@ with tab_historial:
                     else:
                         st.markdown(f"#### ⚡ Desglose de Vueltas ({len(laps_sel)} tramos)")
 
-                    # Gráfica de la sesión seleccionada
+                    # Gráfica de la sesión seleccionada estilo Power BI
                     col_g1, col_g2 = st.columns([1, 1])
                     with col_g1:
+                        # Paleta ejecutiva Power BI para los tipos de tramo
+                        color_map = {
+                            "Calentamiento": "#7928CA",
+                            "Recuperación": "#4A5568",
+                            "Enfriamiento": "#F77F00"
+                        }
                         fig_laps_t = px.bar(
                             df_laps_sel,
                             x="lap_numero",
                             y="distancia_m",
                             color="tipo_clasificado",
-                            title="Distancia y Tipo de Tramo por Vuelta",
-                            labels={"lap_numero": "Nº Vuelta", "distancia_m": "Metros", "tipo_clasificado": "Tipo"},
+                            color_discrete_map=color_map,
+                            color_discrete_sequence=["#00B4D8", "#0078D4", "#2EC4B6"]
                         )
+                        fig_laps_t.update_traces(marker=dict(line=dict(width=0)))
+                        aplicar_estilo_powerbi(
+                            fig_laps_t,
+                            titulo="Perfil de la Sesión",
+                            subtitulo="Metros por tramo (Calentamiento, Series y Descansos)",
+                            x_title="Nº Vuelta",
+                            y_title="Metros"
+                        )
+                        fig_laps_t.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#F0F6FC")))
                         st.plotly_chart(fig_laps_t, use_container_width=True)
 
                     with col_g2:
@@ -427,12 +521,22 @@ with tab_historial:
                             x="tipo_clasificado" if not df_solo_series.empty else "lap_numero",
                             y="tiempo_s",
                             color="fc_media",
-                            title="Tiempos de las Series (segundos)",
-                            labels={"tiempo_s": "Segundos", "tipo_clasificado": "Serie", "lap_numero": "Vuelta", "fc_media": "FC Media"},
-                            color_continuous_scale="Viridis",
+                            color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#FF5A5F"]],
                             text="tiempo_formateado"
                         )
-                        fig_laps_s.update_traces(textposition='outside')
+                        fig_laps_s.update_traces(
+                            textposition='outside',
+                            textfont=dict(color="#F0F6FC", size=11, family="Segoe UI"),
+                            marker=dict(line=dict(width=0))
+                        )
+                        fig_laps_s.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#8B949E", size=11)))
+                        aplicar_estilo_powerbi(
+                            fig_laps_s,
+                            titulo="Tiempos de las Series Reales",
+                            subtitulo="Duración exacta por repetición activa (segundos)",
+                            x_title="Serie" if not df_solo_series.empty else "Vuelta",
+                            y_title="Segundos"
+                        )
                         st.plotly_chart(fig_laps_s, use_container_width=True)
 
                     # Tabla de vueltas
@@ -521,9 +625,21 @@ with tab_series:
             x="fecha",
             y="tiempo_s",
             color="fc_media",
-            title="Evolución de tiempos de serie en el tiempo",
-            labels={"fecha": "Fecha", "tiempo_s": "Segundos", "fc_media": "FC Media"},
-            color_continuous_scale="Viridis"
+            color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#FF5A5F"]],
+            text="tiempo_formateado"
+        )
+        fig.update_traces(
+            textposition='outside',
+            textfont=dict(color="#F0F6FC", size=10, family="Segoe UI"),
+            marker=dict(line=dict(width=0))
+        )
+        fig.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#8B949E", size=11)))
+        aplicar_estilo_powerbi(
+            fig,
+            titulo="Evolución Histórica de Tiempos",
+            subtitulo=f"Tiempos registrados en series de {distancia_filtro} a lo largo de las temporadas",
+            x_title="Fecha de la sesión",
+            y_title="Segundos"
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
