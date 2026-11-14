@@ -40,49 +40,49 @@ st.divider()
 
 # ==================== HELPERS DE ESTILO POWER BI ====================
 def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="", mostrar_grid_y=True, altura=380):
-    """Aplica la estética profesional, limpia y ejecutiva característica de Microsoft Power BI."""
+    """Estilo limpio, profesional y de alto contraste estilo Power BI moderno."""
     fig.update_layout(
         title=dict(
-            text=f"<b style='font-size:16px; color:#F0F6FC;'>{titulo}</b><br><span style='font-size:12px; color:#8B949E;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:16px; color:#F0F6FC;'>{titulo}</b>",
+            text=f"<b style='font-size:17px; color:#FFFFFF;'>{titulo}</b><br><span style='font-size:12px; color:#94A3B8;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:17px; color:#FFFFFF;'>{titulo}</b>",
             x=0.01,
             y=0.96,
             xanchor="left",
             yanchor="top"
         ),
-        plot_bgcolor="rgba(22, 27, 34, 0.7)",
+        plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
         height=altura,
-        margin=dict(l=15, r=15, t=55 if subtitulo else 45, b=35),
+        margin=dict(l=20, r=20, t=65 if subtitulo else 45, b=40),
         font=dict(
             family="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-            color="#C9D1D9",
+            color="#E2E8F0",
             size=12
         ),
         xaxis=dict(
-            title=dict(text=x_title, font=dict(size=12, color="#8B949E")),
+            title=dict(text=x_title, font=dict(size=12, color="#94A3B8")),
             showgrid=False,
             showline=True,
-            linecolor="rgba(255, 255, 255, 0.12)",
-            linewidth=1,
-            tickfont=dict(size=11, color="#8B949E"),
+            linecolor="rgba(255, 255, 255, 0.25)",
+            linewidth=1.5,
+            tickfont=dict(size=11, color="#E2E8F0"),
             zeroline=False
         ),
         yaxis=dict(
-            title=dict(text=y_title, font=dict(size=12, color="#8B949E")),
+            title=dict(text=y_title, font=dict(size=12, color="#94A3B8")),
             showgrid=mostrar_grid_y,
-            gridcolor="rgba(255, 255, 255, 0.07)",
+            gridcolor="rgba(255, 255, 255, 0.1)",
             gridwidth=1,
             showline=False,
-            tickfont=dict(size=11, color="#8B949E"),
+            tickfont=dict(size=11, color="#E2E8F0"),
             zeroline=False
         ),
         hoverlabel=dict(
-            bgcolor="#1F2430",
+            bgcolor="#0F172A",
             font_size=12,
             font_family="Segoe UI, sans-serif",
-            bordercolor="#00B4D8"
+            bordercolor="#38BDF8"
         ),
-        bargap=0.28
+        bargap=0.35
     )
     return fig
 
@@ -578,72 +578,136 @@ with tab_historial:
 
 # ==================== PESTAÑA 5: ANÁLISIS DE SERIES ====================
 with tab_series:
-    st.subheader("⚡ Detalle de Series e Intervalos")
-    distancia_filtro = st.selectbox(
-        "Seleccionar distancia de serie a analizar:",
-        ["Todas", "400m (Pista)", "1000m", "2000m", "5000m"]
-    )
+    st.subheader("⚡ Detalle y Análisis de Series")
+    st.caption("Compara los tiempos de cada repetición de forma limpia, separando las recuperaciones.")
 
-    query_series = """
-    SELECT e.fecha, e.titulo, s.lap_numero, s.distancia_m, s.tiempo_s,
-           s.tiempo_formateado, s.ritmo_minkm, s.fc_media, s.fc_max, s.cadencia
-    FROM series_laps s
-    JOIN entrenamientos e ON s.entrenamiento_id = e.id
+    col_s1, col_s2 = st.columns([1, 2])
+    with col_s1:
+        distancia_opciones = {
+            "1000m": (900, 1100),
+            "400m (Pista)": (380, 430),
+            "2000m": (1900, 2100),
+            "5000m": (4800, 5200)
+        }
+        dist_sel = st.selectbox(
+            "Distancia de serie:",
+            list(distancia_opciones.keys()),
+            index=0
+        )
+        d_min, d_max = distancia_opciones[dist_sel]
+
+    # Buscar sesiones que tengan series de esa distancia
+    query_sesiones = f"""
+    SELECT e.id, e.fecha, e.titulo, COUNT(s.id) as num_series,
+           ROUND(AVG(s.tiempo_s), 1) as media_seg,
+           MIN(s.tiempo_s) as min_seg
+    FROM entrenamientos e
+    JOIN series_laps s ON s.entrenamiento_id = e.id
+    WHERE s.distancia_m BETWEEN {d_min} AND {d_max}
+    GROUP BY e.id
+    HAVING COUNT(s.id) >= 2
+    ORDER BY e.fecha DESC
     """
-    if distancia_filtro == "400m (Pista)":
-        query_series += " WHERE s.distancia_m BETWEEN 380 AND 420 "
-    elif distancia_filtro == "1000m":
-        query_series += " WHERE s.distancia_m BETWEEN 950 AND 1050 "
-    elif distancia_filtro == "2000m":
-        query_series += " WHERE s.distancia_m BETWEEN 1900 AND 2100 "
-    elif distancia_filtro == "5000m":
-        query_series += " WHERE s.distancia_m BETWEEN 4800 AND 5200 "
+    sesiones_series = database.ejecutar_consulta_sql(query_sesiones)
 
-    query_series += " ORDER BY e.fecha DESC, s.lap_numero ASC"
+    if sesiones_series:
+        with col_s2:
+            opciones_sesion = [
+                f"{s['id']} | {s['fecha'][:10]} · {s['titulo']} ({s['num_series']} series)"
+                for s in sesiones_series
+            ]
+            sel_sesion_str = st.selectbox(
+                "Seleccionar sesión de series:",
+                opciones_sesion,
+                index=0
+            )
+            sesion_id = int(sel_sesion_str.split(" | ")[0])
 
-    series_data = database.ejecutar_consulta_sql(query_series)
+        # Cargar los laps exactos de esa sesión
+        query_laps = f"""
+        SELECT lap_numero, distancia_m, tiempo_s, tiempo_formateado, ritmo_minkm, fc_media, fc_max
+        FROM series_laps
+        WHERE entrenamiento_id = {sesion_id} AND distancia_m BETWEEN {d_min} AND {d_max}
+        ORDER BY lap_numero ASC
+        """
+        laps_series_raw = database.ejecutar_consulta_sql(query_laps)
 
-    if series_data:
-        df_series = pd.DataFrame(series_data)
-        st.dataframe(
-            df_series[["fecha", "titulo", "lap_numero", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]].rename(columns={
-                "fecha": "Fecha",
-                "titulo": "Sesión",
-                "lap_numero": "Nº Serie",
-                "distancia_m": "Metros",
-                "tiempo_formateado": "Tiempo",
-                "ritmo_minkm": "Ritmo",
-                "fc_media": "FC Media",
-                "fc_max": "FC Máx"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+        if laps_series_raw:
+            df_laps_s = pd.DataFrame(laps_series_raw)
+            # Nombrar como Serie 1, Serie 2...
+            df_laps_s["nombre_serie"] = [f"Serie #{i}" for i in range(1, len(df_laps_s) + 1)]
 
-        fig = px.bar(
-            df_series.head(100),
-            x="fecha",
-            y="tiempo_s",
-            color="fc_media",
-            color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#FF5A5F"]],
-            text="tiempo_formateado"
-        )
-        fig.update_traces(
-            textposition='outside',
-            textfont=dict(color="#F0F6FC", size=10, family="Segoe UI"),
-            marker=dict(line=dict(width=0))
-        )
-        fig.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#8B949E", size=11)))
-        aplicar_estilo_powerbi(
-            fig,
-            titulo="Evolución Histórica de Tiempos",
-            subtitulo=f"Tiempos registrados en series de {distancia_filtro} a lo largo de las temporadas",
-            x_title="Fecha de la sesión",
-            y_title="Segundos"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            # Métricas resumen de la sesión
+            t_seg_lista = df_laps_s["tiempo_s"].tolist()
+            min_t = min(t_seg_lista)
+            avg_t = sum(t_seg_lista) / len(t_seg_lista)
+            mejor_serie_row = df_laps_s.loc[df_laps_s["tiempo_s"].idxmin()]
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Series", f"{len(df_laps_s)} repeticiones")
+            m2.metric("Mejor Serie", mejor_serie_row["tiempo_formateado"], f"{mejor_serie_row['ritmo_minkm']} min/km")
+            m3.metric("Tiempo Medio", f"{int(avg_t // 60)}:{int(avg_t % 60):02d}", f"{(avg_t / (df_laps_s['distancia_m'].mean() / 1000) / 60):.2f} min/km")
+            fc_media_val = df_laps_s["fc_media"].dropna()
+            m4.metric("FC Media", f"{int(fc_media_val.mean())} ppm" if not fc_media_val.empty else "No reg.")
+
+            # Gráfica de Barras limpia, ancha y contrastada estilo Power BI
+            fig_series = go.Figure()
+
+            # Barras de las series
+            fig_series.add_trace(go.Bar(
+                x=df_laps_s["nombre_serie"],
+                y=df_laps_s["tiempo_s"],
+                text=df_laps_s["tiempo_formateado"],
+                textposition="outside",
+                textfont=dict(color="#FFFFFF", size=13, family="Segoe UI"),
+                marker=dict(
+                    color="#0078D4",  # Azul Power BI vibrante
+                    line=dict(width=0)
+                ),
+                name="Tiempo por Serie"
+            ))
+
+            # Línea de referencia media
+            fig_series.add_hline(
+                y=avg_t,
+                line_dash="dash",
+                line_color="#F2C811",
+                line_width=2,
+                annotation_text=f"Media: {int(avg_t // 60)}:{int(avg_t % 60):02d} min",
+                annotation_position="top right",
+                annotation_font=dict(color="#F2C811", size=11)
+            )
+
+            # Margen superior en Y para que el texto de arriba no se corte
+            max_y = max(t_seg_lista) * 1.15
+            min_y = max(0, min(t_seg_lista) * 0.8)
+
+            aplicar_estilo_powerbi(
+                fig_series,
+                titulo=f"Tiempos por Serie - {dist_sel}",
+                subtitulo=f"Sesión del {sel_sesion_str.split(' | ')[1]}",
+                x_title="Repetición",
+                y_title="Segundos",
+                altura=420
+            )
+            fig_series.update_layout(yaxis=dict(range=[min_y, max_y]))
+            st.plotly_chart(fig_series, use_container_width=True)
+
+            # Tabla con las series
+            st.dataframe(
+                df_laps_s[["nombre_serie", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]].rename(columns={
+                    "nombre_serie": "Repetición",
+                    "distancia_m": "Metros",
+                    "tiempo_formateado": "Tiempo",
+                    "ritmo_minkm": "Ritmo",
+                    "fc_media": "FC Media",
+                    "fc_max": "FC Máx"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
     else:
-        st.info("No hay series registradas para el filtro seleccionado.")
+        st.info(f"No se han encontrado sesiones con series de {dist_sel}.")
 
 # ==================== PESTAÑA 6: CONECTAR GARMIN ====================
 with tab_importar:
