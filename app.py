@@ -23,34 +23,57 @@ st.set_page_config(
 # Inicializar Base de Datos
 database.init_db()
 
-# ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB ====================
-st.markdown("""
+# Cargar imagen de fondo Team Ardil en base64
+bg_image_path = os.path.join(os.path.dirname(__file__), "team_ardil_bg.jpg")
+b64_bg = ""
+if os.path.exists(bg_image_path):
+    try:
+        import base64
+        with open(bg_image_path, "rb") as f:
+            b64_bg = base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        pass
+
+# ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB CON FONDO TEAM ARDIL ====================
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap');
 
-html, body, [data-testid="stAppViewContainer"] {
+html, body, [data-testid="stAppViewContainer"] {{
     font-family: 'Open Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
-    background-color: #F4F6F8 !important;
+    background: linear-gradient(rgba(244, 246, 248, 0.80), rgba(244, 246, 248, 0.80)), url('data:image/jpeg;base64,{b64_bg}') no-repeat center top fixed !important;
+    background-size: cover !important;
     color: #181C20 !important;
-}
+}}
 
-[data-testid="stHeader"] {
+[data-testid="stHeader"] {{
     background-color: transparent !important;
-}
+}}
+
+[data-testid="stMain"] {{
+    background: transparent !important;
+}}
+
+.main .block-container {{
+    background: transparent !important;
+}}
 
 /* Topbar Garmin Connect */
-.garmin-topbar {
-    background: #181C20;
+.garmin-topbar {{
+    background: rgba(24, 28, 32, 0.96) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
     padding: 14px 24px;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
-}
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}}
 
-.garmin-logo-badge {
+.garmin-logo-badge {{
     background: #007CC3;
     width: 42px;
     height: 42px;
@@ -59,9 +82,9 @@ html, body, [data-testid="stAppViewContainer"] {
     align-items: center;
     justify-content: center;
     font-size: 24px;
-}
+}}
 
-.garmin-brand-title {
+.garmin-brand-title {{
     color: #FFFFFF;
     font-weight: 800;
     font-size: 19px;
@@ -69,15 +92,15 @@ html, body, [data-testid="stAppViewContainer"] {
     font-family: 'Open Sans', 'Segoe UI', sans-serif;
     margin: 0;
     line-height: 1.1;
-}
+}}
 
-.garmin-brand-sub {
+.garmin-brand-sub {{
     color: #94A3B8;
     font-size: 12px;
     margin: 0;
-}
+}}
 
-.garmin-device-pill {
+.garmin-device-pill {{
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 6px 14px;
@@ -87,9 +110,9 @@ html, body, [data-testid="stAppViewContainer"] {
     display: flex;
     align-items: center;
     gap: 8px;
-}
+}}
 
-.garmin-avatar {
+.garmin-avatar {{
     background: linear-gradient(135deg, #007CC3, #00A3E0);
     color: #FFFFFF;
     width: 38px;
@@ -101,20 +124,22 @@ html, body, [data-testid="stAppViewContainer"] {
     font-weight: 800;
     font-size: 14px;
     box-shadow: 0 2px 6px rgba(0, 124, 195, 0.4);
-}
+}}
 
 /* Tabs estilo Garmin Connect */
-div[data-baseweb="tab-list"] {
-    background-color: #FFFFFF !important;
+div[data-baseweb="tab-list"] {{
+    background-color: rgba(255, 255, 255, 0.94) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
     padding: 6px 12px !important;
     border-radius: 12px !important;
-    border: 1px solid #E2E8F0 !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+    border: 1px solid rgba(226, 232, 240, 0.9) !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
     gap: 6px !important;
     margin-bottom: 20px !important;
-}
+}}
 
-button[data-baseweb="tab"] {
+button[data-baseweb="tab"] {{
     font-family: 'Open Sans', 'Segoe UI', sans-serif !important;
     font-size: 13.5px !important;
     font-weight: 600 !important;
@@ -123,40 +148,42 @@ button[data-baseweb="tab"] {
     padding: 8px 16px !important;
     transition: all 0.2s ease !important;
     border: none !important;
-}
+}}
 
-button[data-baseweb="tab"]:hover {
+button[data-baseweb="tab"]:hover {{
     color: #007CC3 !important;
     background-color: #F1F5F9 !important;
-}
+}}
 
-button[data-baseweb="tab"][aria-selected="true"] {
+button[data-baseweb="tab"][aria-selected="true"] {{
     color: #007CC3 !important;
     background-color: #E8F4FA !important;
     font-weight: 700 !important;
     border-bottom: 3px solid #007CC3 !important;
-}
+}}
 
 /* Tarjetas y Contenedores Garmin */
-.garmin-card {
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+.garmin-card {{
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(226, 232, 240, 0.9) !important;
     border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     margin-bottom: 16px;
-}
+}}
 
-.garmin-card-header {
+.garmin-card-header {{
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 14px;
     padding-bottom: 10px;
     border-bottom: 1px solid #F1F5F9;
-}
+}}
 
-.garmin-card-title {
+.garmin-card-title {{
     font-size: 13px;
     font-weight: 700;
     color: #181C20;
@@ -165,9 +192,9 @@ button[data-baseweb="tab"][aria-selected="true"] {
     display: flex;
     align-items: center;
     gap: 8px;
-}
+}}
 
-.garmin-badge-green {
+.garmin-badge-green {{
     background: #E8F8F0;
     color: #008744;
     border: 1px solid #A3E4BE;
@@ -175,9 +202,9 @@ button[data-baseweb="tab"][aria-selected="true"] {
     border-radius: 12px;
     font-size: 11px;
     font-weight: 700;
-}
+}}
 
-.garmin-badge-blue {
+.garmin-badge-blue {{
     background: #EBF5FB;
     color: #007CC3;
     border: 1px solid #A3D4F7;
@@ -185,9 +212,9 @@ button[data-baseweb="tab"][aria-selected="true"] {
     border-radius: 12px;
     font-size: 11px;
     font-weight: 700;
-}
+}}
 
-.garmin-badge-orange {
+.garmin-badge-orange {{
     background: #FFF7ED;
     color: #C2410C;
     border: 1px solid #FDBA74;
@@ -195,9 +222,9 @@ button[data-baseweb="tab"][aria-selected="true"] {
     border-radius: 12px;
     font-size: 11px;
     font-weight: 700;
-}
+}}
 
-.garmin-badge-gray {
+.garmin-badge-gray {{
     background: #F1F5F9;
     color: #64748B;
     border: 1px solid #CBD5E1;
@@ -205,10 +232,10 @@ button[data-baseweb="tab"][aria-selected="true"] {
     border-radius: 12px;
     font-size: 11px;
     font-weight: 700;
-}
+}}
 
 /* Botones estilo Garmin */
-div.stButton > button:first-child {
+div.stButton > button:first-child {{
     background-color: #007CC3 !important;
     color: #FFFFFF !important;
     font-weight: 600 !important;
@@ -216,12 +243,12 @@ div.stButton > button:first-child {
     border: none !important;
     padding: 8px 18px !important;
     transition: all 0.2s ease !important;
-}
+}}
 
-div.stButton > button:first-child:hover {
+div.stButton > button:first-child:hover {{
     background-color: #0066A2 !important;
     color: #FFFFFF !important;
-}
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -234,12 +261,13 @@ st.markdown("""
             <div class="garmin-brand-title">
                 GARMIN CONNECT<span style="color: #00A3E0; font-size: 13px; vertical-align: super;">™</span>
             </div>
-            <div class="garmin-brand-sub">Panel de Rendimiento Deportivo · Salva Andreo</div>
+            <div class="garmin-brand-sub">Team Ardil · Athletics Coach | Salva Andreo</div>
         </div>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
+        <span style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>
         <div class="garmin-device-pill">
-            <span>⌚ Garmin Forerunner</span>
+            <span>⌚ Forerunner</span>
             <span style="color: #64748B;">|</span>
             <span style="color: #10B981; font-weight: 700;">● Conectado</span>
         </div>
