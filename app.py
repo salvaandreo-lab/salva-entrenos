@@ -40,10 +40,10 @@ st.divider()
 
 # ==================== HELPERS DE ESTILO POWER BI ====================
 def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="", mostrar_grid_y=True, altura=380):
-    """Estilo limpio, profesional y de alto contraste estilo Power BI moderno."""
+    """Estilo limpio, profesional y de alto contraste estilo Power BI moderno con texto negro nítido."""
     fig.update_layout(
         title=dict(
-            text=f"<b style='font-size:17px; color:#FFFFFF;'>{titulo}</b><br><span style='font-size:12px; color:#94A3B8;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:17px; color:#FFFFFF;'>{titulo}</b>",
+            text=f"<b style='font-size:18px; color:#000000;'>{titulo}</b><br><span style='font-size:13px; color:#334155;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:18px; color:#000000;'>{titulo}</b>",
             x=0.01,
             y=0.96,
             xanchor="left",
@@ -52,35 +52,35 @@ def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="",
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
         height=altura,
-        margin=dict(l=20, r=20, t=65 if subtitulo else 45, b=40),
+        margin=dict(l=20, r=20, t=65 if subtitulo else 45, b=45),
         font=dict(
             family="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-            color="#E2E8F0",
+            color="#000000",
             size=12
         ),
         xaxis=dict(
-            title=dict(text=x_title, font=dict(size=12, color="#94A3B8")),
+            title=dict(text=f"<b>{x_title}</b>" if x_title else "", font=dict(size=13, color="#000000")),
             showgrid=False,
             showline=True,
-            linecolor="rgba(255, 255, 255, 0.25)",
+            linecolor="#000000",
             linewidth=1.5,
-            tickfont=dict(size=11, color="#E2E8F0"),
+            tickfont=dict(size=13, color="#000000", family="Segoe UI"),  # Texto negro puro
             zeroline=False
         ),
         yaxis=dict(
-            title=dict(text=y_title, font=dict(size=12, color="#94A3B8")),
+            title=dict(text=f"<b>{y_title}</b>" if y_title else "", font=dict(size=13, color="#000000")),
             showgrid=mostrar_grid_y,
-            gridcolor="rgba(255, 255, 255, 0.1)",
+            gridcolor="#E2E8F0",
             gridwidth=1,
             showline=False,
-            tickfont=dict(size=11, color="#E2E8F0"),
+            tickfont=dict(size=12, color="#000000", family="Segoe UI"),  # Texto negro puro
             zeroline=False
         ),
         hoverlabel=dict(
             bgcolor="#0F172A",
             font_size=12,
             font_family="Segoe UI, sans-serif",
-            bordercolor="#38BDF8"
+            bordercolor="#0078D4"
         ),
         bargap=0.35
     )
@@ -315,7 +315,7 @@ with tab_records:
             )
             fig_pb.update_traces(
                 textposition='outside',
-                textfont=dict(color="#F0F6FC", size=12, family="Segoe UI"),
+                textfont=dict(color="#000000", size=12, family="Segoe UI"),
                 marker=dict(line=dict(width=0))
             )
             aplicar_estilo_powerbi(
@@ -325,7 +325,7 @@ with tab_records:
                 x_title="Distancia",
                 y_title="Segundos por km"
             )
-            st.plotly_chart(fig_pb, use_container_width=True)
+            st.plotly_chart(fig_pb, use_container_width=True, theme=None)
     else:
         st.info("No se han podido calcular los récords con los datos actuales.")
 
@@ -363,7 +363,7 @@ with tab_volumen:
             )
             fig_anual.update_traces(
                 textposition='outside',
-                textfont=dict(color="#F0F6FC", size=12, family="Segoe UI"),
+                textfont=dict(color="#000000", size=12, family="Segoe UI"),
                 marker=dict(line=dict(width=0))
             )
             fig_anual.update_coloraxes(showscale=False)
@@ -374,7 +374,7 @@ with tab_volumen:
                 x_title="Año",
                 y_title="Kilómetros"
             )
-            st.plotly_chart(fig_anual, use_container_width=True)
+            st.plotly_chart(fig_anual, use_container_width=True, theme=None)
 
     st.divider()
 
@@ -419,9 +419,9 @@ with tab_volumen:
         )
         fig_sem.update_layout(
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#F0F6FC"))
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000"))
         )
-        st.plotly_chart(fig_sem, use_container_width=True)
+        st.plotly_chart(fig_sem, use_container_width=True, theme=None)
 
 # ==================== PESTAÑA 4: FICHA DE SESIÓN E HISTORIAL ====================
 with tab_historial:
@@ -509,8 +509,8 @@ with tab_historial:
                             x_title="Nº Vuelta",
                             y_title="Metros"
                         )
-                        fig_laps_t.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#F0F6FC")))
-                        st.plotly_chart(fig_laps_t, use_container_width=True)
+                        fig_laps_t.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000")))
+                        st.plotly_chart(fig_laps_t, use_container_width=True, theme=None)
 
                     with col_g2:
                         # Filtrar solo series para la gráfica de ritmos/tiempos si hay series
@@ -526,10 +526,10 @@ with tab_historial:
                         )
                         fig_laps_s.update_traces(
                             textposition='outside',
-                            textfont=dict(color="#F0F6FC", size=11, family="Segoe UI"),
+                            textfont=dict(color="#000000", size=11, family="Segoe UI"),
                             marker=dict(line=dict(width=0))
                         )
-                        fig_laps_s.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#8B949E", size=11)))
+                        fig_laps_s.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#000000", size=11)))
                         aplicar_estilo_powerbi(
                             fig_laps_s,
                             titulo="Tiempos de las Series Reales",
@@ -537,7 +537,7 @@ with tab_historial:
                             x_title="Serie" if not df_solo_series.empty else "Vuelta",
                             y_title="Segundos"
                         )
-                        st.plotly_chart(fig_laps_s, use_container_width=True)
+                        st.plotly_chart(fig_laps_s, use_container_width=True, theme=None)
 
                     # Tabla de vueltas
                     columnas_laps = ["lap_numero", "tipo_clasificado", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]
@@ -634,8 +634,9 @@ with tab_series:
 
         if laps_series_raw:
             df_laps_s = pd.DataFrame(laps_series_raw)
-            # Nombrar como Serie 1, Serie 2...
-            df_laps_s["nombre_serie"] = [f"Serie #{i}" for i in range(1, len(df_laps_s) + 1)]
+            # Nombrar como Serie 1, Serie 2... en negrita y negro para la gráfica
+            df_laps_s["nombre_serie"] = [f"<b>Serie #{i}</b>" for i in range(1, len(df_laps_s) + 1)]
+            df_laps_s["nombre_serie_clean"] = [f"Serie #{i}" for i in range(1, len(df_laps_s) + 1)]
 
             # Métricas resumen de la sesión
             t_seg_lista = df_laps_s["tiempo_s"].tolist()
@@ -653,13 +654,13 @@ with tab_series:
             # Gráfica de Barras limpia, ancha y contrastada estilo Power BI
             fig_series = go.Figure()
 
-            # Barras de las series
+            # Barras de las series con etiquetas en negro puro y alto contraste
             fig_series.add_trace(go.Bar(
                 x=df_laps_s["nombre_serie"],
                 y=df_laps_s["tiempo_s"],
                 text=df_laps_s["tiempo_formateado"],
                 textposition="outside",
-                textfont=dict(color="#FFFFFF", size=13, family="Segoe UI"),
+                textfont=dict(color="#000000", size=13, family="Segoe UI"),
                 marker=dict(
                     color="#0078D4",  # Azul Power BI vibrante
                     line=dict(width=0)
@@ -671,11 +672,11 @@ with tab_series:
             fig_series.add_hline(
                 y=avg_t,
                 line_dash="dash",
-                line_color="#F2C811",
+                line_color="#B45309",
                 line_width=2,
                 annotation_text=f"Media: {int(avg_t // 60)}:{int(avg_t % 60):02d} min",
                 annotation_position="top right",
-                annotation_font=dict(color="#F2C811", size=11)
+                annotation_font=dict(color="#B45309", size=12)
             )
 
             # Margen superior en Y para que el texto de arriba no se corte
@@ -690,13 +691,20 @@ with tab_series:
                 y_title="Segundos",
                 altura=420
             )
-            fig_series.update_layout(yaxis=dict(range=[min_y, max_y]))
-            st.plotly_chart(fig_series, use_container_width=True)
+            fig_series.update_layout(
+                yaxis=dict(range=[min_y, max_y]),
+                xaxis=dict(
+                    tickfont=dict(color="#000000", size=13, family="Segoe UI"),
+                    tickcolor="#000000",
+                    title=dict(font=dict(color="#000000", size=13))
+                )
+            )
+            st.plotly_chart(fig_series, use_container_width=True, theme=None)
 
             # Tabla con las series
             st.dataframe(
-                df_laps_s[["nombre_serie", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]].rename(columns={
-                    "nombre_serie": "Repetición",
+                df_laps_s[["nombre_serie_clean", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]].rename(columns={
+                    "nombre_serie_clean": "Repetición",
                     "distancia_m": "Metros",
                     "tiempo_formateado": "Tiempo",
                     "ritmo_minkm": "Ritmo",
