@@ -46,7 +46,7 @@ class GoogleDocTableParser(HTMLParser):
         elif tag in ('td', 'th'):
             self.in_cell = True
             self.cell_data = []
-        elif tag == 'br' and self.in_cell:
+        elif tag in ('p', 'div', 'br', 'li') and self.in_cell:
             self.cell_data.append('\n')
 
     def handle_endtag(self, tag):
@@ -59,6 +59,8 @@ class GoogleDocTableParser(HTMLParser):
             # Limpiar espacios repetidos en la misma línea pero conservar saltos
             lineas = [re.sub(r'[ \t]+', ' ', l).strip() for l in texto.split('\n')]
             self.curr_row.append('\n'.join(l for l in lineas if l))
+        elif tag in ('p', 'div') and self.in_cell:
+            self.cell_data.append('\n')
 
     def handle_data(self, data):
         if self.in_cell:
@@ -67,7 +69,9 @@ class GoogleDocTableParser(HTMLParser):
 def generar_titulo_amigable(texto_plan: str) -> str:
     """Genera un título corto y representativo a partir de la descripción del entrenador."""
     t = texto_plan.strip()
-    t_clean = re.sub(r'[\n\r]+', ' ', t)
+    # Separar con espacios zonas como @z1, @z2 para evitar que se peguen a números
+    t = re.sub(r'(@z\d+)', r'\1 ', t)
+    t = re.sub(r'([A-Za-z]+)(\d+x\d+)', r'\1 \2', t)
 
     # Caso competición
     if "MEDIA MARATÓN" in t.upper() or "MARATÓN" in t.upper() or "CARRERA" in t.upper():
@@ -76,8 +80,8 @@ def generar_titulo_amigable(texto_plan: str) -> str:
             return (match_carrera.group(1) or match_carrera.group(2)).strip().strip('“”"')
         return "Competición"
 
-    # Caso Series (ej: 8x1000, 15x400, 5x2000)
-    match_series = re.search(r'(\d+\s*x\s*\d+m?)\s*(?:Rec\s*([0-9’"”\s]+))?', t, re.IGNORECASE)
+    # Caso Series (ej: 8x1000, 15x400, 5x2000) usando límites de palabra
+    match_series = re.search(r'\b(\d+\s*x\s*\d+m?)\b\s*(?:Rec\s*([0-9’"”\s]+))?', t, re.IGNORECASE)
     if match_series:
         serie_name = match_series.group(1).replace(' ', '')
         rec = match_series.group(2).strip() if match_series.group(2) else ""
@@ -87,12 +91,12 @@ def generar_titulo_amigable(texto_plan: str) -> str:
 
     # Caso Long Run / Tirada Larga
     if "LONG RUN" in t.upper() or "TIRADA" in t.upper():
-        match_km = re.search(r'(\d+)\s*kms?', t, re.IGNORECASE)
+        match_km = re.search(r'\b(\d+)\s*kms?', t, re.IGNORECASE)
         km_str = f" {match_km.group(1)}k" if match_km else ""
         return f"Long Run{km_str} @z1/z2"
 
     # Caso Rodaje estándar
-    match_rodaje = re.search(r'(\d+)\s*kms?', t, re.IGNORECASE)
+    match_rodaje = re.search(r'\b(\d+)\s*kms?', t, re.IGNORECASE)
     if match_rodaje:
         km = match_rodaje.group(1)
         if "fuerza" in t.lower():
@@ -104,6 +108,7 @@ def generar_titulo_amigable(texto_plan: str) -> str:
     if "descanso" in t.lower():
         return "Descanso"
 
+    t_clean = re.sub(r'[\n\r]+', ' ', t)
     return t_clean[:35]
 
 def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int = 2026) -> List[Dict[str, Any]]:
