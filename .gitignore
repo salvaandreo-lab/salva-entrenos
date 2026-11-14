@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.garmin_tokens/
+.streamlit/secrets.toml
+tunnel.log
+tunnel_output.txt
+config_entrenador.json
