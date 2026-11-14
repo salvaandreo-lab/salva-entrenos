@@ -393,8 +393,17 @@ with tab_historial:
                 col_m5.metric("Cadencia / Calorías", f"{entreno_sel.get('cadencia_media') or '-'} spm · {entreno_sel.get('calorias') or '-'} kcal")
 
                 if laps_sel:
-                    df_laps_sel = pd.DataFrame(laps_sel)
-                    st.markdown(f"#### ⚡ Desglose de Vueltas / Series ({len(laps_sel)} intervalos)")
+                    laps_clasificados, resumen_series = database.clasificar_vueltas_sesion(laps_sel)
+                    df_laps_sel = pd.DataFrame(laps_clasificados)
+
+                    if resumen_series["num_series"] > 1:
+                        st.markdown(f"#### ⚡ Análisis de Series: **{resumen_series['num_series']} Series de ~{resumen_series['distancia_aprox']}m**")
+                        c_sub1, c_sub2, c_sub3 = st.columns(3)
+                        c_sub1.success(f"🎯 **Series reales:** {resumen_series['num_series']} repeticiones")
+                        c_sub2.info(f"⏱️ **Recuperaciones:** {resumen_series['num_recuperaciones']} pausas de descanso")
+                        c_sub3.caption(f"🏃 **Calentamiento:** {resumen_series['calentamiento_km']} km | **Enfriamiento:** {resumen_series['enfriamiento_km']} km")
+                    else:
+                        st.markdown(f"#### ⚡ Desglose de Vueltas ({len(laps_sel)} tramos)")
 
                     # Gráfica de la sesión seleccionada
                     col_g1, col_g2 = st.columns([1, 1])
@@ -403,35 +412,40 @@ with tab_historial:
                             df_laps_sel,
                             x="lap_numero",
                             y="distancia_m",
-                            color="fc_media",
-                            title="Distancia y Pulso por Vuelta",
-                            labels={"lap_numero": "Nº Vuelta", "distancia_m": "Metros", "fc_media": "FC Media"},
-                            color_continuous_scale="Reds"
+                            color="tipo_clasificado",
+                            title="Distancia y Tipo de Tramo por Vuelta",
+                            labels={"lap_numero": "Nº Vuelta", "distancia_m": "Metros", "tipo_clasificado": "Tipo"},
                         )
                         st.plotly_chart(fig_laps_t, use_container_width=True)
 
                     with col_g2:
-                        fig_laps_s = px.line(
-                            df_laps_sel,
-                            x="lap_numero",
+                        # Filtrar solo series para la gráfica de ritmos/tiempos si hay series
+                        df_solo_series = df_laps_sel[df_laps_sel["tipo_clasificado"].str.startswith("Serie")]
+                        df_plot_s = df_solo_series if not df_solo_series.empty else df_laps_sel
+                        fig_laps_s = px.bar(
+                            df_plot_s,
+                            x="tipo_clasificado" if not df_solo_series.empty else "lap_numero",
                             y="tiempo_s",
-                            markers=True,
-                            title="Tiempo por Vuelta (segundos)",
-                            labels={"lap_numero": "Nº Vuelta", "tiempo_s": "Segundos"}
+                            color="fc_media",
+                            title="Tiempos de las Series (segundos)",
+                            labels={"tiempo_s": "Segundos", "tipo_clasificado": "Serie", "lap_numero": "Vuelta", "fc_media": "FC Media"},
+                            color_continuous_scale="Viridis",
+                            text="tiempo_formateado"
                         )
+                        fig_laps_s.update_traces(textposition='outside')
                         st.plotly_chart(fig_laps_s, use_container_width=True)
 
                     # Tabla de vueltas
-                    columnas_laps = ["lap_numero", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max", "cadencia"]
+                    columnas_laps = ["lap_numero", "tipo_clasificado", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]
                     st.dataframe(
                         df_laps_sel[columnas_laps].rename(columns={
                             "lap_numero": "Vuelta #",
+                            "tipo_clasificado": "Tipo de Tramo",
                             "distancia_m": "Metros",
                             "tiempo_formateado": "Tiempo",
                             "ritmo_minkm": "Ritmo",
                             "fc_media": "FC Media",
-                            "fc_max": "FC Máx",
-                            "cadencia": "Cadencia"
+                            "fc_max": "FC Máx"
                         }),
                         use_container_width=True,
                         hide_index=True
