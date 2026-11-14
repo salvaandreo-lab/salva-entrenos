@@ -622,32 +622,7 @@ with tab_home:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Si es sesión de series, mostrar mini barra de repeticiones
-                if es_sesion_series:
-                    df_series_mini = pd.DataFrame([l for l in laps_clasificados if str(l.get("tipo_clasificado", "")).startswith("Serie")])
-                    if not df_series_mini.empty:
-                        df_series_mini["serie_label"] = [f"#{i+1}" for i in range(len(df_series_mini))]
-                        fig_mini_s = px.bar(
-                            df_series_mini,
-                            x="serie_label",
-                            y="tiempo_s",
-                            text="tiempo_formateado",
-                            color_discrete_sequence=["#007CC3"]
-                        )
-                        fig_mini_s.update_traces(
-                            textposition="outside",
-                            textfont=dict(color="#000000", size=11, family="Open Sans, Segoe UI"),
-                            marker=dict(line=dict(width=0))
-                        )
-                        aplicar_estilo_powerbi(
-                            fig_mini_s,
-                            titulo=f"⚡ Desglose de las {len(df_series_mini)} Repeticiones",
-                            subtitulo="Tiempos reales por serie activa (sin descansos)",
-                            x_title="Repetición",
-                            y_title="Segundos",
-                            altura=230
-                        )
-                        st.plotly_chart(fig_mini_s, use_container_width=True, theme=None)
+
 
     with col_focus_right:
         # Tarjeta Plan de Entrenamiento · Esta Semana (Google Docs)
