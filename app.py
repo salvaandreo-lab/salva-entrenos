@@ -6,10 +6,13 @@ import os
 import tempfile
 from datetime import datetime
 
+import importlib
 import database
+importlib.reload(database)
 import garmin_sync
 import consultas_ai
 import plan_entrenador
+importlib.reload(plan_entrenador)
 
 st.set_page_config(
     page_title="SportTracks AI - Tu historial de Garmin con IA",
