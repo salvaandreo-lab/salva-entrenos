@@ -38,15 +38,15 @@ if os.path.exists(bg_image_path):
     except Exception:
         pass
 
-# ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB CON FONDO TEAM ARDIL ====================
+# ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB (FONDO LISO ELEGANTE) ====================
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap');
 
 html, body, [data-testid="stAppViewContainer"] {{
     font-family: 'Open Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
-    background: linear-gradient(rgba(244, 246, 248, 0.80), rgba(244, 246, 248, 0.80)), url('data:image/jpeg;base64,{b64_bg}') no-repeat center top fixed !important;
-    background-size: cover !important;
+    background-color: #F4F6F8 !important;
+    background-image: none !important;
     color: #181C20 !important;
 }}
 
@@ -55,11 +55,13 @@ html, body, [data-testid="stAppViewContainer"] {{
 }}
 
 [data-testid="stMain"] {{
-    background: transparent !important;
+    background-color: #F4F6F8 !important;
 }}
 
 .main .block-container {{
     background: transparent !important;
+    max-width: 1400px !important;
+    padding-top: 1.2rem !important;
 }}
 
 /* Topbar Garmin Connect */
@@ -132,13 +134,11 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 /* Tabs estilo Garmin Connect */
 div[data-baseweb="tab-list"] {{
-    background-color: rgba(255, 255, 255, 0.94) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    background-color: #FFFFFF !important;
     padding: 6px 12px !important;
     border-radius: 12px !important;
-    border: 1px solid rgba(226, 232, 240, 0.9) !important;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
+    border: 1px solid #E2E8F0 !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
     gap: 6px !important;
     margin-bottom: 20px !important;
 }}
@@ -168,13 +168,11 @@ button[data-baseweb="tab"][aria-selected="true"] {{
 
 /* Tarjetas y Contenedores Garmin */
 .garmin-card {{
-    background: rgba(255, 255, 255, 0.95) !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
-    border: 1px solid rgba(226, 232, 240, 0.9) !important;
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
     border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     margin-bottom: 16px;
 }}
 
@@ -256,11 +254,14 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado Garmin Connect
-st.markdown("""
+# Encabezado Garmin Connect con icono e insignia oficial Team Ardil
+ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
+ardil_pill_html = f'<div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
+
+st.markdown(f"""
 <div class="garmin-topbar">
     <div style="display: flex; align-items: center; gap: 14px;">
-        <span class="garmin-logo-badge">🏃</span>
+        {ardil_icon_html}
         <div>
             <div class="garmin-brand-title">
                 GARMIN CONNECT<span style="color: #00A3E0; font-size: 13px; vertical-align: super;">™</span>
@@ -269,7 +270,7 @@ st.markdown("""
         </div>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
-        <span style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>
+        {ardil_pill_html}
         <div class="garmin-device-pill">
             <span>⌚ Forerunner</span>
             <span style="color: #64748B;">|</span>
