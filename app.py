@@ -69,28 +69,6 @@ with tab_chat:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Mostrar sugerencias rápidas si el chat está vacío
-    if not st.session_state.chat_history:
-        st.markdown("**Consultas rápidas sugeridas:**")
-        col_sug1, col_sug2, col_sug3, col_sug4 = st.columns(4)
-        pregunta_click = None
-
-        if col_sug1.button("⚡ Mi mejor serie de 400m", use_container_width=True):
-            pregunta_click = "¿Cuál fue mi serie de 400 metros más rápida de toda mi historia y qué día fue?"
-        if col_sug2.button("🏆 Mis marcas en Santa Pola", use_container_width=True):
-            pregunta_click = "Dime todas las veces que corrí la Media Maratón de Santa Pola y mis tiempos"
-        if col_sug3.button("📅 Mi semana con más kms", use_container_width=True):
-            pregunta_click = "¿Cuál fue la semana en la que corrí más kilómetros y cuántos hice?"
-        if col_sug4.button("🏃 ¿Cuándo corrí mi Maratón?", use_container_width=True):
-            pregunta_click = "Cuéntame los detalles de mi mejor maratón: fecha, ritmo, tiempo y pulso"
-
-        if pregunta_click:
-            st.session_state.chat_history.append({"role": "user", "content": pregunta_click})
-            with st.spinner("Analizando tus 1.296 entrenamientos con Gemini..."):
-                resp = consultas_ai.responder_consulta_entrenamientos(pregunta_click)
-                st.session_state.chat_history.append({"role": "assistant", "content": resp})
-            st.rerun()
-
     # Renderizar historial de mensajes
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
