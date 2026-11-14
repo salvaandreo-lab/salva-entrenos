@@ -10,6 +10,10 @@ import importlib
 import database
 importlib.reload(database)
 import garmin_sync
+import coros_sync
+importlib.reload(coros_sync)
+import strava_sync
+importlib.reload(strava_sync)
 import consultas_ai
 import plan_entrenador
 importlib.reload(plan_entrenador)
@@ -1330,13 +1334,233 @@ def render_sincronizar_garmin():
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
 
+# ==================== COMPONENTE: SINCRONIZAR COROS ====================
+def render_sincronizar_coros():
+    st.subheader("📥 Sincronización con COROS Training Hub")
+    st.caption("Conexión con los servidores de COROS (relojes Pace, Apex, Vertix) para descargar tus entrenamientos y series o importar archivos.")
+
+    col_c1, col_c2 = st.columns([2, 1])
+    with col_c1:
+        st.info("🔗 **Plataforma web oficial**: [COROS Training Hub Europa](https://trainingeu.coros.com/login)")
+    with col_c2:
+        st.caption("Compatible con COROS Training Hub Europa y Global.")
+
+    sesion_coros = coros_sync.obtener_tokens_guardados()
+    if sesion_coros:
+        st.success(f"✅ **Sesión de COROS activa:** `{sesion_coros.get('account')}` (Región: {sesion_coros.get('region', 'eu').upper()})")
+        if sesion_coros.get("last_sync"):
+            st.caption(f"🕒 Última sincronización: {sesion_coros.get('last_sync')}")
+
+        col_sync, col_logout = st.columns([3, 1])
+        with col_sync:
+            if st.button("⚡ Sincronización Rápida COROS a 1 Clic (Descargar nuevos entrenos)", type="primary", use_container_width=True):
+                p_bar = st.progress(0)
+                st_text = st.empty()
+
+                def update_coros_p(act, tot, name):
+                    pct = min(1.0, act / max(1, tot))
+                    p_bar.progress(pct)
+                    st_text.text(f"Importando {act}/{tot}: {name}")
+
+                res = coros_sync.sincronizar_actividades_coros(progreso_callback=update_coros_p)
+                if res["status"] == "ok":
+                    st.success(f"🎉 {res['mensaje']}")
+                    st.rerun()
+                else:
+                    st.error(res["mensaje"])
+
+        with col_logout:
+            if st.button("🚪 Cerrar sesión COROS", use_container_width=True):
+                coros_sync.cerrar_sesion_coros()
+                st.success("Sesión cerrada correctamente.")
+                st.rerun()
+    else:
+        st.markdown("#### 🔑 Iniciar Sesión en COROS Training Hub")
+        with st.form("form_coros_login"):
+            c_email = st.text_input("Email / Cuenta COROS:", placeholder="ejemplo@email.com")
+            c_pass = st.text_input("Contraseña COROS:", type="password")
+            c_reg = st.selectbox(
+                "Servidor / Región:",
+                options=["eu", "global"],
+                format_func=lambda x: "Europa (trainingeu.coros.com)" if x == "eu" else "Global / América (training.coros.com)"
+            )
+            submit_coros = st.form_submit_button("Conectar con COROS", type="primary")
+
+            if submit_coros:
+                if not c_email or not c_pass:
+                    st.error("Por favor, introduce tu email y contraseña de COROS.")
+                else:
+                    with st.spinner("Conectando y autenticando con COROS Training Hub..."):
+                        ok, msg, _ = coros_sync.iniciar_sesion_coros(c_email, c_pass, region_key=c_reg)
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+    st.divider()
+
+    # Importador manual de archivos de COROS
+    st.markdown("#### 📁 Importar Archivos de COROS (.FIT o .ZIP)")
+    st.caption("También puedes arrastrar archivos FIT descargados individualmente o en lote desde el Training Hub o la app de COROS.")
+
+    archivos_coros = st.file_uploader(
+        "Arrastra tus archivos de COROS aquí:",
+        type=["fit", "zip"],
+        accept_multiple_files=True,
+        key="uploader_coros"
+    )
+    if archivos_coros:
+        if st.button(f"📥 Procesar {len(archivos_coros)} archivo(s) de COROS", type="primary"):
+            p_bar_f = st.progress(0)
+            guardados = 0
+            for idx_f, arch in enumerate(archivos_coros):
+                p_bar_f.progress((idx_f + 1) / len(archivos_coros))
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp:
+                    tmp.write(arch.read())
+                    tmp_p = tmp.name
+                try:
+                    datos_e, laps_e = garmin_sync.parsear_archivo_fit(tmp_p)
+                    nid = database.guardar_entrenamiento(datos_e, laps_e)
+                    if nid:
+                        guardados += 1
+                except Exception:
+                    pass
+                finally:
+                    if os.path.exists(tmp_p):
+                        os.remove(tmp_p)
+            st.success(f"🎉 Se han importado {guardados} sesiones de COROS con éxito.")
+            st.rerun()
+
+# ==================== COMPONENTE: SINCRONIZAR STRAVA ====================
+def render_sincronizar_strava():
+    st.subheader("📥 Sincronización con Strava")
+    st.caption("Conecta tu cuenta de Strava para descargar actividades y series automáticamente o importa exportaciones de Strava.")
+
+    col_s1, col_s2 = st.columns([2, 1])
+    with col_s1:
+        st.info("🔗 **Configuración API oficial**: [Strava API Settings](https://www.strava.com/settings/api)")
+    with col_s2:
+        st.caption("Compatible con Tokens Personales y OAuth 2.0 de Strava.")
+
+    sesion_strava = strava_sync.obtener_tokens_strava()
+    if sesion_strava:
+        st.success(f"✅ **Conectado a Strava:** `{sesion_strava.get('athlete_name', 'Atleta Conectado')}`")
+        if sesion_strava.get("last_sync"):
+            st.caption(f"🕒 Última sincronización: {sesion_strava.get('last_sync')}")
+
+        col_sync, col_logout = st.columns([3, 1])
+        with col_sync:
+            if st.button("⚡ Sincronización Rápida Strava a 1 Clic", type="primary", use_container_width=True):
+                p_bar = st.progress(0)
+                st_text = st.empty()
+
+                def update_strava_p(act, tot, name):
+                    pct = min(1.0, act / max(1, tot))
+                    p_bar.progress(pct)
+                    st_text.text(f"Importando {act}/{tot}: {name}")
+
+                res = strava_sync.sincronizar_actividades_strava(progreso_callback=update_strava_p)
+                if res["status"] == "ok":
+                    st.success(f"🎉 {res['mensaje']}")
+                    st.rerun()
+                else:
+                    st.error(res["mensaje"])
+
+        with col_logout:
+            if st.button("🚪 Desconectar Strava", use_container_width=True):
+                strava_sync.cerrar_sesion_strava()
+                st.success("Conexión con Strava eliminada.")
+                st.rerun()
+    else:
+        st.markdown("#### 🔑 Conectar cuenta de Strava")
+        st.caption("Introduce tu **Access Token de Strava** (obtenido en Strava Developer Settings) o credenciales de aplicación.")
+
+        tab_tok, tab_oauth = st.tabs(["Token Directo (Recomendado)", "OAuth Completo (Client ID / Secret)"])
+        with tab_tok:
+            with st.form("form_strava_token"):
+                st_tok = st.text_input("Access Token de Strava:", type="password", placeholder="pe. 8a3f890c2e...")
+                st_name = st.text_input("Nombre de atleta / referencia:", value="Salva Andreo")
+                submit_tok = st.form_submit_button("Conectar Token", type="primary")
+
+                if submit_tok:
+                    if not st_tok:
+                        st.error("Debes introducir un Access Token.")
+                    else:
+                        with st.spinner("Comprobando token con la API de Strava..."):
+                            ok, msg, _ = strava_sync.conectar_strava_token_directo(st_tok, st_name)
+                            if ok:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+        with tab_oauth:
+            with st.form("form_strava_oauth"):
+                cid = st.text_input("Client ID:")
+                csec = st.text_input("Client Secret:", type="password")
+                rtok = st.text_input("Refresh Token:", type="password")
+                submit_oauth = st.form_submit_button("Conectar OAuth")
+
+                if submit_oauth:
+                    if not cid or not csec or not rtok:
+                        st.error("Introduce todos los campos OAuth.")
+                    else:
+                        with st.spinner("Solicitando token de acceso a Strava..."):
+                            ok, msg, _ = strava_sync.refrescar_token_strava(cid, csec, rtok)
+                            if ok:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+    st.divider()
+
+    # Importador manual de archivos de Strava
+    st.markdown("#### 📁 Importar Archivos de Strava (.FIT o .ZIP)")
+    st.caption("Arrastra cualquier archivo FIT o exportación comprimida de Strava.")
+
+    archivos_strava = st.file_uploader(
+        "Arrastra tus archivos de Strava aquí:",
+        type=["fit", "zip"],
+        accept_multiple_files=True,
+        key="uploader_strava"
+    )
+    if archivos_strava:
+        if st.button(f"📥 Procesar {len(archivos_strava)} archivo(s) de Strava", type="primary"):
+            p_bar_s = st.progress(0)
+            guardados = 0
+            for idx_f, arch in enumerate(archivos_strava):
+                p_bar_s.progress((idx_f + 1) / len(archivos_strava))
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp:
+                    tmp.write(arch.read())
+                    tmp_p = tmp.name
+                try:
+                    datos_e, laps_e = garmin_sync.parsear_archivo_fit(tmp_p)
+                    nid = database.guardar_entrenamiento(datos_e, laps_e)
+                    if nid:
+                        guardados += 1
+                except Exception:
+                    pass
+                finally:
+                    if os.path.exists(tmp_p):
+                        os.remove(tmp_p)
+            st.success(f"🎉 Se han importado {guardados} sesiones de Strava con éxito.")
+            st.rerun()
+
 # ==================== PESTAÑA 6: PERSONAL (DESPLEGABLE) ====================
 with tab_personal:
-    col_p_sel, _ = st.columns([1.2, 2.8])
+    col_p_sel, _ = st.columns([1.5, 2.5])
     with col_p_sel:
         opcion_personal = st.selectbox(
             "Seleccionar sección personal:",
-            ["🏆 Récords Personales (PB)", "🎽 Ficha de Sesión e Historial", "📥 Sincronizar Garmin"],
+            [
+                "🏆 Récords Personales (PB)",
+                "🎽 Ficha de Sesión e Historial",
+                "📥 Sincronizar Garmin",
+                "📥 Sincronizar Coros",
+                "📥 Sincronizar Strava"
+            ],
             index=0
         )
 
@@ -1348,3 +1572,7 @@ with tab_personal:
         render_historial_sesiones()
     elif opcion_personal == "📥 Sincronizar Garmin":
         render_sincronizar_garmin()
+    elif opcion_personal == "📥 Sincronizar Coros":
+        render_sincronizar_coros()
+    elif opcion_personal == "📥 Sincronizar Strava":
+        render_sincronizar_strava()
