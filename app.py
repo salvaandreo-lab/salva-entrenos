@@ -893,53 +893,7 @@ with tab_volumen:
     st.subheader("📈 Carga y Volumen de Entrenamiento")
     st.caption("Evolución de kilómetros semanales, mensuales y anuales para control de picos de forma y descanso.")
 
-    # 1. Resumen Anual
-    vol_anual = database.obtener_volumen_anual()
-    if vol_anual:
-        df_anual = pd.DataFrame(vol_anual)
-        col_va1, col_va2 = st.columns([1, 2])
-        with col_va1:
-            st.markdown("#### 📅 Kilómetros por Año")
-            st.dataframe(
-                df_anual.rename(columns={
-                    "anio": "Año",
-                    "sesiones": "Sesiones",
-                    "total_km": "Kms Totales",
-                    "media_km": "Media km/sesión"
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
-        with col_va2:
-            df_anual_sorted = df_anual.sort_values("anio")
-            fig_anual = px.bar(
-                df_anual_sorted,
-                x="anio",
-                y="total_km",
-                text=df_anual_sorted["total_km"].apply(lambda v: f"{v:,.0f}k".replace(",", ".")),
-                color="total_km",
-                color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#2EC4B6"]]
-            )
-            fig_anual.update_traces(
-                textposition='outside',
-                textfont=dict(color="#000000", size=12, family="Segoe UI"),
-                marker=dict(line=dict(width=0))
-            )
-            fig_anual.update_coloraxes(showscale=False)
-            aplicar_estilo_powerbi(
-                fig_anual,
-                titulo="Volumen Anual Acumulado",
-                subtitulo="Kilómetros totales completados por temporada",
-                x_title="Año",
-                y_title="Kilómetros"
-            )
-            st.plotly_chart(fig_anual, use_container_width=True, theme=None)
-
-    st.divider()
-
-    # 2. Volumen Semanal con media móvil y filtros por mes / 12 semanas
-    st.markdown("#### 🏃 Kilómetros Semanales (Carga Aguda vs. Crónica)")
-    st.caption("Evolución de kilómetros por semana con línea de tendencia de carga y selector automático.")
+    # 1. Volumen Semanal con media móvil y filtros por mes / 12 semanas (Destacado arriba)
     vol_semanal = database.obtener_volumen_semanal()
     if vol_semanal:
         df_sem = pd.DataFrame(vol_semanal)
@@ -955,13 +909,12 @@ with tab_volumen:
         rangos_list = []
         for s in df_sem["semana"]:
             try:
-                from datetime import timedelta
                 d_l = datetime.strptime(s + "-1", "%Y-W%W-%w")
                 d_d = d_l + timedelta(days=6)
                 m_nom = f"{meses_es.get(d_l.month, 'mes')}-{d_l.year}"
                 r_nom = f"{d_l.strftime('%d/%m')} - {d_d.strftime('%d/%m')}"
             except Exception:
-                m_nom = s[:7]
+                m_nom = s
                 r_nom = s
             meses_list.append(m_nom)
             rangos_list.append(r_nom)
@@ -1081,6 +1034,51 @@ with tab_volumen:
             st.plotly_chart(fig_sem, use_container_width=True, theme=None)
         else:
             st.info("No hay datos de entrenamientos para el período o mes seleccionado.")
+
+    st.divider()
+
+    # 2. Resumen Anual Histórico (Debajo)
+    vol_anual = database.obtener_volumen_anual()
+    if vol_anual:
+        st.markdown("#### 📅 Historial y Resumen por Temporada (Años)")
+        df_anual = pd.DataFrame(vol_anual)
+        col_va1, col_va2 = st.columns([1, 2])
+        with col_va1:
+            st.markdown("**Kilómetros por Año**")
+            st.dataframe(
+                df_anual.rename(columns={
+                    "anio": "Año",
+                    "sesiones": "Sesiones",
+                    "total_km": "Kms Totales",
+                    "media_km": "Media km/sesión"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        with col_va2:
+            df_anual_sorted = df_anual.sort_values("anio")
+            fig_anual = px.bar(
+                df_anual_sorted,
+                x="anio",
+                y="total_km",
+                text=df_anual_sorted["total_km"].apply(lambda v: f"{v:,.0f}k".replace(",", ".")),
+                color="total_km",
+                color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#2EC4B6"]]
+            )
+            fig_anual.update_traces(
+                textposition='outside',
+                textfont=dict(color="#000000", size=12, family="Segoe UI"),
+                marker=dict(line=dict(width=0))
+            )
+            fig_anual.update_coloraxes(showscale=False)
+            aplicar_estilo_powerbi(
+                fig_anual,
+                titulo="Volumen Anual Acumulado",
+                subtitulo="Kilómetros totales completados por temporada",
+                x_title="Año",
+                y_title="Kilómetros"
+            )
+            st.plotly_chart(fig_anual, use_container_width=True, theme=None)
 
 # ==================== COMPONENTE: HISTORIAL Y FICHA DETALLADA ====================
 def render_historial_sesiones():
