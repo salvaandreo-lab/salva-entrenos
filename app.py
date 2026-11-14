@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -6,17 +7,12 @@ import os
 import tempfile
 from datetime import datetime
 
-import importlib
 import database
-importlib.reload(database)
 import garmin_sync
 import coros_sync
-importlib.reload(coros_sync)
 import strava_sync
-importlib.reload(strava_sync)
 import consultas_ai
 import plan_entrenador
-importlib.reload(plan_entrenador)
 
 st.set_page_config(
     page_title="SportTracks AI - Tu historial de Garmin con IA",
@@ -24,8 +20,28 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inicializar Base de Datos
-database.init_db()
+# Keepalive automático: evita desconexiones por inactividad o pantallas de reconexión
+components.html(
+    """
+    <script>
+    if (!window.keepAliveSet) {
+        window.keepAliveSet = true;
+        setInterval(function() {
+            try {
+                window.parent.postMessage({type: 'streamlit:ping'}, '*');
+            } catch (e) {}
+        }, 25000);
+    }
+    </script>
+    """,
+    height=0,
+    width=0
+)
+
+# Inicializar Base de Datos una única vez por sesión
+if "db_initialized" not in st.session_state:
+    database.init_db()
+    st.session_state.db_initialized = True
 
 # Cargar imagen de fondo Team Ardil en base64
 bg_image_path = os.path.join(os.path.dirname(__file__), "team_ardil_bg.jpg")
