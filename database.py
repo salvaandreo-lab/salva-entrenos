@@ -280,6 +280,59 @@ def obtener_detalle_entrenamiento(entrenamiento_id: int) -> Tuple[Optional[Dict[
     conn.close()
     return entreno, laps
 
+def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Clasifica de forma inteligente cada vuelta distinguiendo:
+    - Calentamiento
+    - Series activas (Serie #1, #2...)
+    - Recuperaciones entre series (pausas de 1', trote suave)
+    - Enfriamiento
+    """
+    total = len(laps)
+    resultado = []
+    num_serie = 1
+    num_recup = 0
+    series_distancias = []
+    calentamiento_km = 0.0
+    enfriamiento_km = 0.0
+
+    for i, lap in enumerate(laps):
+        item = dict(lap)
+        dist = float(lap.get("distancia_m", 0.0))
+        t_s = float(lap.get("tiempo_s", 0.0))
+        ritmo = str(lap.get("ritmo_minkm", ""))
+
+        # 1. Calentamiento: primer lap largo (> 1200m) en una sesión de muchas vueltas
+        if i == 0 and dist >= 1200 and total > 3:
+            item["tipo_clasificado"] = "Calentamiento"
+            calentamiento_km = round(dist / 1000.0, 2)
+        # 2. Enfriamiento: último lap largo (> 1000m)
+        elif i == total - 1 and dist >= 1000 and total > 3:
+            item["tipo_clasificado"] = "Enfriamiento"
+            enfriamiento_km = round(dist / 1000.0, 2)
+        # 3. Recuperación: tramo corto (< 250m) o tiempo de descanso a ritmo lento
+        elif dist < 250 or (t_s <= 240 and any(k in ritmo for k in ["12:", "15:", "20:", "25:", "30:", "--"])):
+            item["tipo_clasificado"] = "Recuperación"
+            num_recup += 1
+        # 4. Serie principal
+        else:
+            item["tipo_clasificado"] = f"Serie #{num_serie}"
+            num_serie += 1
+            series_distancias.append(dist)
+
+        resultado.append(item)
+
+    dist_media_serie = round(sum(series_distancias) / max(1, len(series_distancias))) if series_distancias else 0
+
+    resumen = {
+        "num_series": num_serie - 1,
+        "distancia_aprox": dist_media_serie,
+        "num_recuperaciones": num_recup,
+        "calentamiento_km": calentamiento_km,
+        "enfriamiento_km": enfriamiento_km
+    }
+    return resultado, resumen
+
 if __name__ == "__main__":
     init_db()
     print("Base de datos SportTracks inicializada correctamente.")
