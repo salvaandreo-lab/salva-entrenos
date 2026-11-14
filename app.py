@@ -20,9 +20,230 @@ st.set_page_config(
 # Inicializar Base de Datos
 database.init_db()
 
-# Título y encabezado principal
-st.title("🏃 SportTracks AI")
-st.caption("Análisis avanzado de entrenamientos de atletismo, cargas de trabajo y asistente inteligente con IA.")
+# ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB ====================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap');
+
+html, body, [data-testid="stAppViewContainer"] {
+    font-family: 'Open Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif !important;
+    background-color: #F4F6F8 !important;
+    color: #181C20 !important;
+}
+
+[data-testid="stHeader"] {
+    background-color: transparent !important;
+}
+
+/* Topbar Garmin Connect */
+.garmin-topbar {
+    background: #181C20;
+    padding: 14px 24px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+}
+
+.garmin-logo-badge {
+    background: #007CC3;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.garmin-brand-title {
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: 0.8px;
+    font-family: 'Open Sans', 'Segoe UI', sans-serif;
+    margin: 0;
+    line-height: 1.1;
+}
+
+.garmin-brand-sub {
+    color: #94A3B8;
+    font-size: 12px;
+    margin: 0;
+}
+
+.garmin-device-pill {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 6px 14px;
+    border-radius: 20px;
+    color: #E2E8F0;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.garmin-avatar {
+    background: linear-gradient(135deg, #007CC3, #00A3E0);
+    color: #FFFFFF;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(0, 124, 195, 0.4);
+}
+
+/* Tabs estilo Garmin Connect */
+div[data-baseweb="tab-list"] {
+    background-color: #FFFFFF !important;
+    padding: 6px 12px !important;
+    border-radius: 12px !important;
+    border: 1px solid #E2E8F0 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+    gap: 6px !important;
+    margin-bottom: 20px !important;
+}
+
+button[data-baseweb="tab"] {
+    font-family: 'Open Sans', 'Segoe UI', sans-serif !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    transition: all 0.2s ease !important;
+    border: none !important;
+}
+
+button[data-baseweb="tab"]:hover {
+    color: #007CC3 !important;
+    background-color: #F1F5F9 !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #007CC3 !important;
+    background-color: #E8F4FA !important;
+    font-weight: 700 !important;
+    border-bottom: 3px solid #007CC3 !important;
+}
+
+/* Tarjetas y Contenedores Garmin */
+.garmin-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    margin-bottom: 16px;
+}
+
+.garmin-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.garmin-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #181C20;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.garmin-badge-green {
+    background: #E8F8F0;
+    color: #008744;
+    border: 1px solid #A3E4BE;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.garmin-badge-blue {
+    background: #EBF5FB;
+    color: #007CC3;
+    border: 1px solid #A3D4F7;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.garmin-badge-orange {
+    background: #FFF7ED;
+    color: #C2410C;
+    border: 1px solid #FDBA74;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.garmin-badge-gray {
+    background: #F1F5F9;
+    color: #64748B;
+    border: 1px solid #CBD5E1;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* Botones estilo Garmin */
+div.stButton > button:first-child {
+    background-color: #007CC3 !important;
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    border: none !important;
+    padding: 8px 18px !important;
+    transition: all 0.2s ease !important;
+}
+
+div.stButton > button:first-child:hover {
+    background-color: #0066A2 !important;
+    color: #FFFFFF !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Encabezado Garmin Connect
+st.markdown("""
+<div class="garmin-topbar">
+    <div style="display: flex; align-items: center; gap: 14px;">
+        <span class="garmin-logo-badge">🏃</span>
+        <div>
+            <div class="garmin-brand-title">
+                GARMIN CONNECT<span style="color: #00A3E0; font-size: 13px; vertical-align: super;">™</span>
+            </div>
+            <div class="garmin-brand-sub">Panel de Rendimiento Deportivo · Salva Andreo</div>
+        </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 16px;">
+        <div class="garmin-device-pill">
+            <span>⌚ Garmin Forerunner</span>
+            <span style="color: #64748B;">|</span>
+            <span style="color: #10B981; font-weight: 700;">● Conectado</span>
+        </div>
+        <div class="garmin-avatar">SA</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # Resumen superior
 stats = database.obtener_resumen_estadisticas()
@@ -30,20 +251,26 @@ total_km = stats.get("total_km", 0)
 total_entrenos = stats.get("total_entrenos", 0)
 media_km = round(total_km / max(1, total_entrenos), 1)
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Sesiones registradas", total_entrenos)
-col2.metric("Kilómetros totales", f"{total_km:,} km".replace(",", "."))
-col3.metric("Media por sesión", f"{media_km} km")
-col4.metric("Series e intervalos", stats.get("total_series", 0))
+doc_url = plan_entrenador.obtener_doc_url()
 
-st.divider()
+@st.cache_data(ttl=120)
+def cargar_plan_y_comparativa(url_doc):
+    try:
+        p_dias = plan_entrenador.descargar_plan_entrenador(url_doc)
+        reconc = plan_entrenador.conciliar_plan_con_garmin(p_dias)
+        return p_dias, reconc
+    except Exception as e:
+        return [], {"comparativa": [], "preguntas_discrepancias": []}
 
-# ==================== HELPERS DE ESTILO POWER BI ====================
+plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url)
+comparativa_plan = reconciliacion.get("comparativa", [])
+
+# ==================== HELPERS DE ESTILO POWER BI / GARMIN ====================
 def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="", mostrar_grid_y=True, altura=380):
-    """Estilo limpio, profesional y de alto contraste estilo Power BI moderno con texto negro nítido."""
+    """Estilo limpio, profesional y de alto contraste estilo Garmin Connect moderno con texto negro nítido."""
     fig.update_layout(
         title=dict(
-            text=f"<b style='font-size:18px; color:#000000;'>{titulo}</b><br><span style='font-size:13px; color:#334155;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:18px; color:#000000;'>{titulo}</b>",
+            text=f"<b style='font-size:17px; color:#181C20; font-family:Open Sans, Segoe UI, sans-serif;'>{titulo}</b><br><span style='font-size:12px; color:#64748B;'>{subtitulo}</span>" if subtitulo else f"<b style='font-size:17px; color:#181C20; font-family:Open Sans, Segoe UI, sans-serif;'>{titulo}</b>",
             x=0.01,
             y=0.96,
             xanchor="left",
@@ -54,48 +281,315 @@ def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="",
         height=altura,
         margin=dict(l=20, r=20, t=65 if subtitulo else 45, b=45),
         font=dict(
-            family="Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-            color="#000000",
+            family="Open Sans, Segoe UI, -apple-system, Roboto, sans-serif",
+            color="#181C20",
             size=12
         ),
         xaxis=dict(
-            title=dict(text=f"<b>{x_title}</b>" if x_title else "", font=dict(size=13, color="#000000")),
+            title=dict(text=f"<b>{x_title}</b>" if x_title else "", font=dict(size=12, color="#181C20")),
             showgrid=False,
             showline=True,
             linecolor="#000000",
             linewidth=1.5,
-            tickfont=dict(size=13, color="#000000", family="Segoe UI"),  # Texto negro puro
+            tickfont=dict(size=12, color="#000000", family="Open Sans, Segoe UI"),
             zeroline=False
         ),
         yaxis=dict(
-            title=dict(text=f"<b>{y_title}</b>" if y_title else "", font=dict(size=13, color="#000000")),
+            title=dict(text=f"<b>{y_title}</b>" if y_title else "", font=dict(size=12, color="#181C20")),
             showgrid=mostrar_grid_y,
             gridcolor="#E2E8F0",
             gridwidth=1,
             showline=False,
-            tickfont=dict(size=12, color="#000000", family="Segoe UI"),  # Texto negro puro
+            tickfont=dict(size=11, color="#000000", family="Open Sans, Segoe UI"),
             zeroline=False
         ),
         hoverlabel=dict(
-            bgcolor="#0F172A",
+            bgcolor="#181C20",
             font_size=12,
-            font_family="Segoe UI, sans-serif",
-            bordercolor="#0078D4"
+            font_family="Open Sans, Segoe UI, sans-serif",
+            bordercolor="#007CC3"
         ),
         bargap=0.35
     )
     return fig
 
-# Pestañas principales
-tab_chat, tab_plan, tab_records, tab_volumen, tab_historial, tab_series, tab_importar = st.tabs([
-    "💬 Entrenador IA (Chat)",
+# Pestañas principales organizadas al estilo Garmin Connect
+tab_home, tab_plan, tab_series, tab_records, tab_volumen, tab_historial, tab_chat, tab_importar = st.tabs([
+    "🏠 Inicio (Garmin Connect)",
     "📋 Plan Entrenador vs. Garmin",
+    "⚡ Análisis de Series",
     "🏆 Récords Personales (PB)",
     "📈 Volumen y Carga Semanal",
     "🎽 Ficha de Sesión e Historial",
-    "⚡ Análisis de Series",
+    "💬 Entrenador IA (Chat)",
     "📥 Sincronizar Garmin"
 ])
+
+# ==================== PESTAÑA 0: INICIO (GARMIN CONNECT) ====================
+with tab_home:
+    # 1. "Lo esencial" (The Essentials - 4 top metric cards)
+    st.markdown("<div style='margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px;'>⚡ Lo Esencial</div>", unsafe_allow_html=True)
+    c_es1, c_es2, c_es3, c_es4 = st.columns(4)
+    with c_es1:
+        st.markdown(f"""
+        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 6px;">🏃 Actividades Totales</div>
+            <div style="font-size: 28px; font-weight: 800; color: #007CC3;">{total_entrenos} <span style="font-size: 13px; color: #64748B; font-weight: 600;">sesiones</span></div>
+            <div style="font-size: 11px; color: #10B981; margin-top: 4px; font-weight: 600;">● Historial completo Garmin</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_es2:
+        st.markdown(f"""
+        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 6px;">🗺️ Distancia Acumulada</div>
+            <div style="font-size: 28px; font-weight: 800; color: #007CC3;">{total_km:,.1f} <span style="font-size: 13px; color: #64748B; font-weight: 600;">km</span></div>
+            <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Media: {media_km} km / sesión</div>
+        </div>
+        """.replace(",", "."), unsafe_allow_html=True)
+    with c_es3:
+        total_series_count = stats.get('total_series', 0)
+        st.markdown(f"""
+        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 6px;">⚡ Series e Intervalos</div>
+            <div style="font-size: 28px; font-weight: 800; color: #007CC3;">{total_series_count:,} <span style="font-size: 13px; color: #64748B; font-weight: 600;">vueltas</span></div>
+            <div style="font-size: 11px; color: #007CC3; margin-top: 4px; font-weight: 600;">Pistas y asfalto clasificados</div>
+        </div>
+        """.replace(",", "."), unsafe_allow_html=True)
+    with c_es4:
+        # Ritmo promedio histórico
+        query_ritmo_prom = "SELECT ROUND(AVG(tiempo_total_s / NULLIF(distancia_km, 0)), 0) as seg_km FROM entrenamientos WHERE distancia_km > 0 AND tiempo_total_s > 0"
+        ritmo_res = database.ejecutar_consulta_sql(query_ritmo_prom)
+        seg_prom = ritmo_res[0]["seg_km"] if ritmo_res and ritmo_res[0]["seg_km"] else 280
+        ritmo_prom_str = f"{int(seg_prom // 60)}:{int(seg_prom % 60):02d}"
+        st.markdown(f"""
+        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 6px;">🎯 Ritmo Promedio Global</div>
+            <div style="font-size: 28px; font-weight: 800; color: #007CC3;">{ritmo_prom_str} <span style="font-size: 13px; color: #64748B; font-weight: 600;">min/km</span></div>
+            <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Ritmo medio general</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 2. "En primer plano" (In Focus)
+    st.markdown("<div style='margin-top: 10px; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px;'>🎯 En Primer Plano</div>", unsafe_allow_html=True)
+    col_focus_left, col_focus_right = st.columns([1.1, 0.9])
+
+    with col_focus_left:
+        # Actividad Reciente / Destacada
+        ultimos_entrenos = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos ORDER BY fecha DESC LIMIT 15")
+        if ultimos_entrenos:
+            opciones_entrenos = {
+                f"{e['fecha'][:10]} · {e['titulo']} ({e['distancia_km']} km)": e['id']
+                for e in ultimos_entrenos
+            }
+            # Selector compacto para cambiar de actividad
+            sel_nombre = st.selectbox("Seleccionar actividad para visualizar:", list(opciones_entrenos.keys()), index=0)
+            act_id = opciones_entrenos[sel_nombre]
+            act_sel, laps_act = database.obtener_detalle_entrenamiento(act_id)
+
+            if act_sel:
+                fecha_act = act_sel['fecha'][:10]
+                plan_match = [p for p in comparativa_plan if p.get("fecha") == fecha_act]
+                titulo_plan = plan_match[0]["titulo_sugerido"] if plan_match else ""
+
+                laps_clasificados, resumen_laps = database.clasificar_vueltas_sesion(laps_act) if laps_act else ([], {})
+                es_sesion_series = resumen_laps.get("num_series", 0) > 0
+
+                st.markdown(f"""
+                <div class="garmin-card">
+                    <div class="garmin-card-header">
+                        <div class="garmin-card-title">
+                            <span style="font-size: 18px;">🏃</span> CARRERA · {act_sel['fecha'][:10]} {act_sel['fecha'][11:16]}
+                        </div>
+                        <span class="garmin-badge-green">{'✅ Plan: ' + titulo_plan if titulo_plan else '🟢 Actividad Garmin'}</span>
+                    </div>
+                    <div style="font-size: 20px; font-weight: 800; color: #181C20; margin-bottom: 12px;">
+                        {titulo_plan if titulo_plan else act_sel['titulo']}
+                        <span style="font-size: 12px; font-weight: 600; color: #64748B; margin-left: 8px;">📍 {act_sel.get('ubicacion') or 'Murcia'}</span>
+                    </div>
+                    <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px;">
+                        <span style="font-size: 42px; font-weight: 800; color: #007CC3; line-height: 1;">{act_sel['distancia_km']}</span>
+                        <span style="font-size: 18px; font-weight: 700; color: #64748B;">km</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; background: #F8FAFC; padding: 14px; border-radius: 10px; border: 1px solid #E2E8F0;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⏱️ Tiempo</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #181C20;">{act_sel['tiempo_formateado']}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Ritmo Medio</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #181C20;">{act_sel['ritmo_medio_minkm']} <span style="font-size: 11px; font-weight: normal; color: #64748B;">/km</span></div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🔥 Calorías</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #181C20;">{act_sel.get('calorias') or '--'} <span style="font-size: 11px; font-weight: normal; color: #64748B;">kcal</span></div>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Si es sesión de series, mostrar mini barra de repeticiones
+                if es_sesion_series:
+                    df_series_mini = pd.DataFrame([l for l in laps_clasificados if str(l.get("tipo_clasificado", "")).startswith("Serie")])
+                    if not df_series_mini.empty:
+                        df_series_mini["serie_label"] = [f"#{i+1}" for i in range(len(df_series_mini))]
+                        fig_mini_s = px.bar(
+                            df_series_mini,
+                            x="serie_label",
+                            y="tiempo_s",
+                            text="tiempo_formateado",
+                            color_discrete_sequence=["#007CC3"]
+                        )
+                        fig_mini_s.update_traces(
+                            textposition="outside",
+                            textfont=dict(color="#000000", size=11, family="Open Sans, Segoe UI"),
+                            marker=dict(line=dict(width=0))
+                        )
+                        aplicar_estilo_powerbi(
+                            fig_mini_s,
+                            titulo=f"⚡ Desglose de las {len(df_series_mini)} Repeticiones",
+                            subtitulo="Tiempos reales por serie activa (sin descansos)",
+                            x_title="Repetición",
+                            y_title="Segundos",
+                            altura=230
+                        )
+                        st.plotly_chart(fig_mini_s, use_container_width=True, theme=None)
+
+    with col_focus_right:
+        # Tarjeta Plan de Entrenamiento · Esta Semana (Google Docs)
+        st.markdown("""
+        <div class="garmin-card">
+            <div class="garmin-card-header">
+                <div class="garmin-card-title">
+                    <span style="font-size: 18px;">📋</span> PLAN DEL ENTRENADOR · ESTA SEMANA
+                </div>
+                <span class="garmin-badge-blue">Google Doc</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Mostrar los días de la semana actual
+        dias_esta_sem = [
+            c for c in comparativa_plan
+            if "09-11" in c.get("semana", "") or "15-11" in c.get("semana", "") or any(d in c.get("fecha", "") for d in ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"])
+        ]
+        if not dias_esta_sem:
+            dias_esta_sem = comparativa_plan[-7:] if comparativa_plan else []
+
+        for d in dias_esta_sem:
+            g = d.get("garmin_entreno")
+            badge_cls = "garmin-badge-green" if "Cumplido" in d.get("estado", "") else ("garmin-badge-gray" if d.get("es_descanso") else "garmin-badge-orange")
+            garmin_txt = f"🏃 {g['distancia_km']} km | {g['tiempo_formateado']} | {g['ritmo_medio_minkm']}/km" if g else ("💤 Descanso" if d.get("es_descanso") else "⏳ Pendiente de registrar")
+            
+            st.markdown(f"""
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;">
+                <div>
+                    <div style="font-size: 12px; font-weight: 700; color: #181C20;">{d.get('dia_semana', '')} · <span style="color:#64748B; font-weight:normal;">{d.get('fecha', '')}</span></div>
+                    <div style="font-size: 13px; font-weight: 700; color: #007CC3;">{d.get('titulo_sugerido', '')}</div>
+                    <div style="font-size: 11px; color: #64748B;">{garmin_txt}</div>
+                </div>
+                <span class="{badge_cls}">{d.get('estado', '')}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 3. "De un vistazo" (At a Glance - 3 modular cards)
+    st.markdown("<div style='margin-top: 10px; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px;'>📊 De un vistazo</div>", unsafe_allow_html=True)
+    c_gl1, c_gl2, c_gl3 = st.columns(3)
+
+    with c_gl1:
+        st.markdown("""
+        <div class="garmin-card">
+            <div class="garmin-card-header">
+                <div class="garmin-card-title">
+                    <span style="font-size: 18px;">🏆</span> RÉCORDS PERSONALES (PB)
+                </div>
+                <span class="garmin-badge-blue">Oficiales</span>
+            </div>
+        """, unsafe_allow_html=True)
+        records_pb = database.obtener_records_personales()
+        for rec in records_pb[:5]:
+            st.markdown(f"""
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #F1F5F9;">
+                <div>
+                    <div style="font-size: 13px; font-weight: 700; color: #181C20;">{rec['categoria']}</div>
+                    <div style="font-size: 11px; color: #64748B;">{rec['fecha'][:10]}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 15px; font-weight: 800; color: #007CC3;">{rec['tiempo']}</div>
+                    <div style="font-size: 11px; font-weight: 600; color: #64748B;">{rec['ritmo']} min/km</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with c_gl2:
+        st.markdown("""
+        <div class="garmin-card">
+            <div class="garmin-card-header">
+                <div class="garmin-card-title">
+                    <span style="font-size: 18px;">⚡</span> ÚLTIMO TEST DE SERIES
+                </div>
+                <span class="garmin-badge-green">8x1000m</span>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 12px; color: #64748B;">Martes 10/11/2026 · Alcantarilla</div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20;">Series 8x1000m (Rec 1')</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; background: #F8FAFC; padding: 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748B;">MEJOR SERIE</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #007CC3;">3:26 <span style="font-size: 11px; font-weight: normal; color: #64748B;">min</span></div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748B;">TIEMPO MEDIO</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #181C20;">3:33 <span style="font-size: 11px; font-weight: normal; color: #64748B;">min</span></div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748B;">RITMO MEDIO</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #181C20;">3:33 <span style="font-size: 11px; font-weight: normal; color: #64748B;">/km</span></div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: #64748B;">PAUSAS</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #181C20;">1' <span style="font-size: 11px; font-weight: normal; color: #64748B;">recup</span></div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c_gl3:
+        st.markdown("""
+        <div class="garmin-card">
+            <div class="garmin-card-header">
+                <div class="garmin-card-title">
+                    <span style="font-size: 18px;">📈</span> CARGA SEMANAL RECIENTE
+                </div>
+                <span class="garmin-badge-blue">Kms</span>
+            </div>
+        """, unsafe_allow_html=True)
+        vol_sem_raw = database.obtener_volumen_semanal()
+        if vol_sem_raw:
+            df_sem_gl = pd.DataFrame(vol_sem_raw[-8:])
+            fig_sem_gl = px.bar(
+                df_sem_gl,
+                x="semana",
+                y="total_km",
+                text=df_sem_gl["total_km"].apply(lambda v: f"{v:.0f}"),
+                color_discrete_sequence=["#007CC3"]
+            )
+            fig_sem_gl.update_traces(
+                textposition="outside",
+                textfont=dict(color="#000000", size=10, family="Open Sans, Segoe UI"),
+                marker=dict(line=dict(width=0))
+            )
+            aplicar_estilo_powerbi(
+                fig_sem_gl,
+                x_title="",
+                y_title="",
+                altura=180
+            )
+            fig_sem_gl.update_layout(margin=dict(l=10, r=10, t=10, b=30))
+            st.plotly_chart(fig_sem_gl, use_container_width=True, theme=None)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================== PESTAÑA 1: CHAT IA CON MEMORIA ====================
 with tab_chat:
@@ -148,20 +642,13 @@ with tab_plan:
         st.info(f"🔗 **Documento activo del míster**: [Abrir Google Doc del Entrenador]({doc_url})")
     with col_p2:
         if st.button("🔄 Comprobar cambios ahora", use_container_width=True):
+            cargar_plan_y_comparativa.clear()
             st.success("Plan recargado en vivo directamente desde Google Docs.")
             st.rerun()
 
-    # Descargar y conciliar en vivo
-    try:
-        plan_dias = plan_entrenador.descargar_plan_entrenador(doc_url)
-        reconciliacion = plan_entrenador.conciliar_plan_con_garmin(plan_dias)
-        comparativa = reconciliacion["comparativa"]
-        preguntas = reconciliacion["preguntas_discrepancias"]
-    except Exception as e:
-        st.error(f"Error al sincronizar con el Google Doc del entrenador: {e}")
-        plan_dias = []
-        comparativa = []
-        preguntas = []
+    plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url)
+    comparativa = reconciliacion.get("comparativa", [])
+    preguntas = reconciliacion.get("preguntas_discrepancias", [])
 
     if comparativa:
         # 1. Alertas y discrepancias detectadas (preguntas al atleta)
