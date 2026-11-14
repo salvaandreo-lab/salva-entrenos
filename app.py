@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 import database
 import garmin_sync
@@ -394,8 +394,7 @@ with tab_home:
         tit_ult, km_ult, t_ult, r_ult, cal_ult, f_ult, ub_ult = "Sin registros", "0.00", "--", "--", "--", "--", ""
 
     # --- 2. DATO: PRÓXIMA COMPETICIÓN ---
-    import datetime
-    hoy_str = datetime.date.today().strftime("%Y-%m-%d")
+    hoy_str = date.today().strftime("%Y-%m-%d")
     carreras_futuras = [
         p for p in plan_dias
         if p.get("fecha", "") >= hoy_str and (
@@ -408,8 +407,8 @@ with tab_home:
         tit_comp = prox_carrera.get("titulo_sugerido") or "Competición"
         f_comp = prox_carrera.get("fecha", "")
         try:
-            d_comp = datetime.date.fromisoformat(f_comp)
-            diff_dias = (d_comp - datetime.date.today()).days
+            d_comp = date.fromisoformat(f_comp)
+            diff_dias = (d_comp - date.today()).days
             if diff_dias == 0:
                 badge_comp = "¡HOY!"
                 dias_comp_txt = "¡Hoy es la prueba!"
