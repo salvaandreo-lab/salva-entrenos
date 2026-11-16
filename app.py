@@ -392,25 +392,25 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
 
 # Encabezado SportTracks AI con icono e insignia oficial Team Ardil
 ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
-ardil_pill_html = f'<div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
+ardil_pill_html = f'<div class="notranslate" translate="no" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span class="notranslate" translate="no" style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
 
 st.markdown(f"""
-<div class="garmin-topbar">
+<div class="garmin-topbar notranslate" translate="no">
     <div style="display: flex; align-items: center; gap: 14px;">
         {ardil_icon_html}
-        <div>
-            <div class="garmin-brand-title">
+        <div class="notranslate" translate="no">
+            <div class="garmin-brand-title notranslate" translate="no">
                 SPORTTRACKS<span style="color: #00A3E0; font-size: 13px; vertical-align: super;"> AI</span>
             </div>
-            <div class="garmin-brand-sub">Team Ardil · Athletics Coach | Salva Andreo</div>
+            <div class="garmin-brand-sub notranslate" translate="no">Team Ardil · Athletics Coach | Salva Andreo</div>
         </div>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
         {ardil_pill_html}
-        <div class="garmin-device-pill">
+        <div class="garmin-device-pill notranslate" translate="no">
             {pill_device_html}
         </div>
-        <div class="garmin-avatar">SA</div>
+        <div class="garmin-avatar notranslate" translate="no">SA</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
