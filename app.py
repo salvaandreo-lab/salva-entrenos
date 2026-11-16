@@ -314,6 +314,17 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
     # 1. Garmin Connect
     token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
     token_file_g = os.path.join(token_dir_g, "garmin_tokens.json")
+    if not os.path.isfile(token_file_g):
+        tokens_cloud = None
+        try:
+            tokens_cloud = st.secrets.get("GARMIN_TOKENS_JSON") or os.environ.get("GARMIN_TOKENS_JSON")
+        except Exception:
+            pass
+        if tokens_cloud:
+            os.makedirs(token_dir_g, exist_ok=True)
+            with open(token_file_g, "w", encoding="utf-8") as f:
+                f.write(tokens_cloud)
+
     if os.path.isfile(token_file_g):
         plataformas_activas += 1
         try:
@@ -368,6 +379,13 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
 
     if plataformas_activas == 0:
         return 0, 0, "No hay ninguna plataforma vinculada todavía. Puedes conectar tu cuenta de Garmin, COROS o Strava en la pestaña '👤 Personal'."
+
+    if total_nuevas > 0:
+        try:
+            import sync_sporttracks
+            sync_sporttracks.sync_file("sporttracks.db", commit_msg=f"Sincronización manual: {total_nuevas} nuevo(s) [skip ci]")
+        except Exception:
+            pass
 
     detalle = " · ".join(mensajes)
     return total_nuevas, total_omitidas, detalle
