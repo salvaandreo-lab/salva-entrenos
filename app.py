@@ -873,9 +873,116 @@ with tab_chat:
         st.session_state.chat_history = []
 
     # Renderizar historial de mensajes
-    for msg in st.session_state.chat_history:
+    for idx, msg in enumerate(st.session_state.chat_history):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            
+            # Módulo Frente a Frente si está presente en el mensaje
+            if msg.get("frente_a_frente"):
+                faf = msg["frente_a_frente"]
+                lugar = faf["lugar"]
+                n_ed = faf.get("num_ediciones", 0)
+                cat_principal = faf.get("categoria_seleccionada", "Competición")
+                
+                # Fila de acción con botón destacado en grande a la derecha
+                st.markdown("<div style='margin-top: 14px; margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+                col_faf_info, col_faf_btn = st.columns([2.4, 1.6])
+                with col_faf_info:
+                    st.markdown(f"**⚔️ Comparativa 'Frente a Frente' disponible**")
+                    st.caption(f"Enfrenta tus {n_ed} ediciones de {cat_principal} en {lugar} cara a cara.")
+                with col_faf_btn:
+                    faf_key = f"faf_open_{idx}"
+                    is_open = st.session_state.get(faf_key, False)
+                    btn_text = "🔽 Ocultar Comparativa" if is_open else "⚔️ FRENTE A FRENTE"
+                    if st.button(btn_text, key=f"btn_{faf_key}", type="primary", use_container_width=True):
+                        st.session_state[faf_key] = not is_open
+                        st.rerun()
+                        
+                # Si está abierto, desplegar el cuadro de mandos Frente a Frente
+                if is_open:
+                    # Selector de categoría si hay más de una en ese lugar
+                    cats = list(faf.get("categorias", {}).keys())
+                    if len(cats) > 1:
+                        cat_sel = st.radio(
+                            "Selecciona distancia / modalidad a comparar:",
+                            cats,
+                            index=cats.index(cat_principal) if cat_principal in cats else 0,
+                            horizontal=True,
+                            key=f"cat_rad_{idx}"
+                        )
+                        datos_cat = consultas_ai.generar_datos_categoria(faf["categorias"][cat_sel])
+                    else:
+                        cat_sel = cat_principal
+                        datos_cat = faf
+
+                    # Tarjetas KPI de Comparativa
+                    pb = datos_cat.get("pb", {})
+                    ultima = datos_cat.get("ultima", {})
+                    promedio = datos_cat.get("promedio", {})
+                    
+                    st.markdown("<div style='margin-top: 10px; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+                    k1, k2, k3, k4 = st.columns(4)
+                    with k1:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-left: 4px solid #F59E0B; text-align: center; padding: 12px;">
+                            <div style="font-size: 0.78rem; color: #F59E0B; font-weight: 700;">🥇 MEJOR MARCA (PB)</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: #FFFFFF; margin: 4px 0;">{pb.get('tiempo_formateado', '-')}</div>
+                            <div style="font-size: 0.78rem; color: #94A3B8;">{pb.get('ritmo_minkm', '-')} min/km · Ed. {pb.get('año', '-')}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with k2:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-left: 4px solid #60A5FA; text-align: center; padding: 12px;">
+                            <div style="font-size: 0.78rem; color: #60A5FA; font-weight: 700;">🏃 ÚLTIMA EDICIÓN</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: #FFFFFF; margin: 4px 0;">{ultima.get('tiempo_formateado', '-')}</div>
+                            <div style="font-size: 0.78rem; color: #94A3B8;">{ultima.get('ritmo_minkm', '-')} min/km · Ed. {ultima.get('año', '-')}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with k3:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-left: 4px solid #EC4899; text-align: center; padding: 12px;">
+                            <div style="font-size: 0.78rem; color: #EC4899; font-weight: 700;">⏱️ DIFERENCIA VS PB</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: #FFFFFF; margin: 4px 0;">{ultima.get('diferencia_vs_pb', '-')}</div>
+                            <div style="font-size: 0.78rem; color: #94A3B8;">vs récord de {pb.get('año', '-')}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with k4:
+                        st.markdown(f"""
+                        <div class="metric-card" style="border-left: 4px solid #00D26A; text-align: center; padding: 12px;">
+                            <div style="font-size: 0.78rem; color: #00D26A; font-weight: 700;">📊 PROMEDIO CIRCUITO</div>
+                            <div style="font-size: 1.35rem; font-weight: 700; color: #FFFFFF; margin: 4px 0;">{promedio.get('tiempo_formateado', '-')}</div>
+                            <div style="font-size: 0.78rem; color: #94A3B8;">Ritmo: {promedio.get('ritmo_minkm', '-')} min/km</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Gráfico Plotly
+                    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+                    fig_faf = consultas_ai.generar_grafico_frente_a_frente(datos_cat.get("ediciones_cron", []), lugar, cat_sel)
+                    st.plotly_chart(fig_faf, use_container_width=True)
+
+                    # Tabla comparativa Frente a Frente
+                    st.markdown("##### 📋 Cara a Cara: Desglose Edición por Edición")
+                    t_md = "| Edición | Fecha | Distancia | Tiempo | Ritmo Medio | FC Media | Dif. vs PB | Estado |\n"
+                    t_md += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |\n"
+                    for ed in datos_cat.get("ediciones", []):
+                        fc_val = f"{ed['fc_media']} ppm" if ed.get("fc_media") else "- ppm"
+                        badge_pb = "🥇 **PB (Récord)**" if ed.get("es_pb") else f"`{ed.get('diferencia_vs_pb', '-')}`"
+                        año_txt = f"**{ed.get('año', '-')}**" if ed.get("es_pb") else ed.get("año", "-")
+                        t_md += f"| {año_txt} | {ed.get('fecha', '-')} | {ed.get('distancia_km', '-')} km | **{ed.get('tiempo_formateado', '-')}** | {ed.get('ritmo_minkm', '-')} min/km | {fc_val} | {badge_pb} | {ed.get('estado', '-')} |\n"
+                    st.markdown(t_md)
+
+                    # Análisis Táctico Team Ardil
+                    analisis_texto = faf.get("analisis_coach") or consultas_ai.generar_analisis_tactico_coach(lugar, cat_sel, datos_cat.get("ediciones_cron", []), pb, ultima)
+                    st.markdown(f"""
+                    <div style="background: rgba(0, 120, 212, 0.12); border-left: 4px solid #0078D4; padding: 14px 18px; border-radius: 8px; margin-top: 15px;">
+                        <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #60A5FA; margin-bottom: 6px;">
+                            <span>🗣️ Voz del Míster · Análisis Táctico Team Ardil</span>
+                        </div>
+                        <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
+                            {analisis_texto}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     # Entrada de texto del usuario
     pregunta_input = st.chat_input("Escribe tu pregunta al entrenador IA...")
@@ -887,8 +994,20 @@ with tab_chat:
         with st.chat_message("assistant"):
             with st.spinner("El entrenador está consultando tu historial en Garmin..."):
                 resp = consultas_ai.responder_consulta_entrenamientos(pregunta_input)
-                st.markdown(resp)
-        st.session_state.chat_history.append({"role": "assistant", "content": resp})
+                if isinstance(resp, dict):
+                    msg_content = resp.get("texto", "")
+                    faf_data = resp.get("frente_a_frente")
+                else:
+                    msg_content = str(resp)
+                    faf_data = None
+                st.markdown(msg_content)
+                
+        assistant_msg = {"role": "assistant", "content": msg_content}
+        if faf_data:
+            assistant_msg["frente_a_frente"] = faf_data
+            if "frente a frente" in pregunta_input.lower() or "comparativa" in pregunta_input.lower():
+                st.session_state[f"faf_open_{len(st.session_state.chat_history)}"] = True
+        st.session_state.chat_history.append(assistant_msg)
         st.rerun()
 
 # ==================== PESTAÑA 2: PLAN DEL ENTRENADOR VS. GARMIN ====================
