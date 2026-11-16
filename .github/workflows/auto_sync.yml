@@ -1,0 +1,46 @@
+name: Sincronización Automática Diaria de Entrenamientos
+
+on:
+  schedule:
+    # 20:00 UTC = 21:00 CET (Hora oficial de España peninsular)
+    - cron: '0 20 * * *'
+  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub cuando quieras
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN || github.token }}
+
+      - name: Configurar entorno Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar Auto-Sync de Entrenamientos
+        env:
+          GARMIN_TOKENS_JSON: ${{ secrets.GARMIN_TOKENS_JSON }}
+        run: |
+          python auto_sync_runner.py
+
+      - name: Guardar cambios y desplegar en Streamlit
+        run: |
+          git config --global user.name "SportTracks Bot"
+          git config --global user.email "bot@sporttracks.ai"
+          git add sporttracks.db
+          if git diff --staged --quiet; then
+            echo "✅ No hay entrenamientos nuevos hoy. Repositorio al día."
+          else
+            git commit -m "🔄 Auto-sync: nuevos entrenamientos descargados [skip ci]"
+            git push origin main
+            echo "🚀 Base de datos actualizada y desplegada en Streamlit Cloud."
+          fi
