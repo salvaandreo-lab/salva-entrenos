@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import os
 import tempfile
 import time
+import re
 from typing import Tuple, List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
 
@@ -22,10 +23,18 @@ st.set_page_config(
     layout="wide"
 )
 
-# Keepalive automático: evita desconexiones por inactividad o pantallas de reconexión
+# Keepalive automático y prevención de traducción automática del navegador
 components.html(
     """
     <script>
+    try {
+        const doc = window.parent.document;
+        if (doc) {
+            doc.documentElement.setAttribute('translate', 'no');
+            doc.documentElement.classList.add('notranslate');
+        }
+    } catch (e) {}
+
     if (!window.keepAliveSet) {
         window.keepAliveSet = true;
         setInterval(function() {
@@ -408,6 +417,56 @@ def cargar_plan_y_comparativa(url_doc):
 plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url)
 comparativa_plan = reconciliacion.get("comparativa", [])
 
+def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str = "", plan_comparativa: list = None) -> bool:
+    """
+    Verifica de forma estricta si una actividad es verdaderamente una sesión de series.
+    Regla del entrenador:
+    1. Si la fecha está en el plan del entrenador, SOLO es serie si el entrenador indicó series explícitamente.
+       Si en el plan pone carrera, rodaje, descanso, tirada o fuerza sin series, NUNCA es serie.
+    2. Si es una fecha fuera del plan (histórico):
+       - Se descartan carreras, competiciones y rodajes continuos.
+       - Se verifica si existen pausas/recuperaciones intermedias entre vueltas o título explícito.
+    """
+    f_dia = str(fecha)[:10]
+
+    # 1. Comprobación contra el Plan del Entrenador (Prioridad absoluta)
+    if plan_comparativa:
+        for p in plan_comparativa:
+            if p.get("fecha") == f_dia:
+                desc = (p.get("plan_descripcion") or "").lower()
+                tit_sug = (p.get("titulo_sugerido") or "").lower()
+                tiene_patron = bool(re.search(r'\b\d+\s*x\s*\d+', desc) or "serie" in desc or "series" in tit_sug)
+                if p.get("es_series") or tiene_patron:
+                    return True
+                return False
+
+    # 2. Descarte por palabras clave excluyentes (carreras, competiciones, rodajes continuos)
+    texto = f"{titulo or ''} {notas or ''}".lower()
+    palabras_excluidas = [
+        "maratón", "maraton", "media maratón", "media maraton", "carrera",
+        "competición", "competicion", "dorsal", "10k", "5k", "san silvestre",
+        "trail", "cross", "trofeo", "campeonato", "rodaje", "tirada",
+        "long run", "suave", "regenerativo", "recuperación", "recuperacion", "caco"
+    ]
+    palabras_series = ["serie", "series", "interval", "x1000", "x400", "x2000", "x500", "x200", "x800", "x1500"]
+
+    if any(p in texto for p in palabras_excluidas) and not any(s in texto for s in palabras_series):
+        return False
+
+    # 3. Comprobar si tiene estructura de series con recuperaciones entre repeticiones
+    try:
+        _, laps = database.obtener_detalle_entrenamiento(entreno_id)
+        if laps:
+            _, resumen = database.clasificar_vueltas_sesion(laps)
+            if resumen.get("num_recuperaciones", 0) >= 1:
+                return True
+            if bool(re.search(r'\b\d+\s*x\s*\d+', texto) or any(s in texto for s in palabras_series)):
+                return True
+    except Exception:
+        pass
+
+    return False
+
 # ==================== HELPERS DE ESTILO POWER BI / GARMIN ====================
 def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="", mostrar_grid_y=True, altura=380):
     """Estilo limpio, profesional y de alto contraste estilo Garmin Connect moderno con texto negro nítido."""
@@ -523,18 +582,22 @@ with tab_home:
         dist_comp = "21.097 km"
         tipo_comp = "Asfalto Oficial"
 
-    # --- 3. DATO: ÚLTIMO DÍA DE SERIES Y DATOS ---
+    # --- 3. DATO: ÚLTIMO DÍA DE SERIES Y DATOS (Solo series reales confirmadas por el plan) ---
     query_ult_series = """
-    SELECT e.id, e.fecha, e.titulo, e.ubicacion
+    SELECT e.id, e.fecha, e.titulo, e.ubicacion, e.notas_entrenador
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
     WHERE s.distancia_m >= 350
     GROUP BY e.id
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
-    LIMIT 1
+    LIMIT 25
     """
-    ult_sesion_series = database.ejecutar_consulta_sql(query_ult_series)
+    candidatos_series = database.ejecutar_consulta_sql(query_ult_series)
+    ult_sesion_series = [
+        s for s in candidatos_series
+        if es_sesion_series_real(s["id"], s["fecha"], s["titulo"], s.get("notas_entrenador", ""), comparativa_plan)
+    ]
     if ult_sesion_series:
         s_id = ult_sesion_series[0]["id"]
         s_act, s_laps = database.obtener_detalle_entrenamiento(s_id)
@@ -1351,9 +1414,10 @@ with tab_series:
         )
         d_min, d_max = distancia_opciones[dist_sel]
 
-    # Buscar sesiones que tengan series de esa distancia
+    # Buscar sesiones que tengan vueltas de esa distancia
     query_sesiones = f"""
-    SELECT e.id, e.fecha, e.titulo, COUNT(s.id) as num_series,
+    SELECT e.id, e.fecha, e.titulo, e.ubicacion, e.notas_entrenador,
+           COUNT(s.id) as num_series,
            ROUND(AVG(s.tiempo_s), 1) as media_seg,
            MIN(s.tiempo_s) as min_seg
     FROM entrenamientos e
@@ -1363,14 +1427,21 @@ with tab_series:
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
     """
-    sesiones_series = database.ejecutar_consulta_sql(query_sesiones)
+    sesiones_series_raw = database.ejecutar_consulta_sql(query_sesiones)
+    # Filtrar estrictamente solo sesiones de series reales (respetando la regla del entrenador y descartando carreras/rodajes)
+    sesiones_series = [
+        s for s in sesiones_series_raw
+        if es_sesion_series_real(s["id"], s["fecha"], s["titulo"], s.get("notas_entrenador", ""), comparativa_plan)
+    ]
 
     if sesiones_series:
         with col_s2:
-            opciones_sesion = [
-                f"{s['id']} | {s['fecha'][:10]} · {s['titulo']} ({s['num_series']} series)"
-                for s in sesiones_series
-            ]
+            opciones_sesion = []
+            for s in sesiones_series:
+                p_match = [p for p in comparativa_plan if p.get("fecha") == s["fecha"][:10]]
+                tit_amigable = p_match[0]["titulo_sugerido"] if p_match else s["titulo"]
+                opciones_sesion.append(f"{s['id']} | {s['fecha'][:10]} · {tit_amigable} ({s['num_series']} series)")
+
             sel_sesion_str = st.selectbox(
                 "Seleccionar sesión de series:",
                 opciones_sesion,
@@ -1402,9 +1473,9 @@ with tab_series:
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Series", f"{len(df_laps_s)} repeticiones")
             m2.metric("Mejor Serie", mejor_serie_row["tiempo_formateado"], f"{mejor_serie_row['ritmo_minkm']} min/km")
-            m3.metric("Tiempo Medio", f"{int(avg_t // 60)}:{int(avg_t % 60):02d}", f"{(avg_t / (df_laps_s['distancia_m'].mean() / 1000) / 60):.2f} min/km")
+            m3.metric("Tiempo Promedio", f"{int(avg_t // 60)}:{int(avg_t % 60):02d}", f"{(avg_t / (df_laps_s['distancia_m'].mean() / 1000) / 60):.2f} min/km")
             fc_media_val = df_laps_s["fc_media"].dropna()
-            m4.metric("FC Media", f"{int(fc_media_val.mean())} ppm" if not fc_media_val.empty else "No reg.")
+            m4.metric("FC Promedio", f"{int(fc_media_val.mean())} ppm" if not fc_media_val.empty else "Sin datos")
 
             # Gráfica de Barras limpia, ancha y contrastada estilo Power BI
             fig_series = go.Figure()
