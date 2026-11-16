@@ -5,6 +5,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import tempfile
+import time
+from typing import Tuple, List, Dict, Any, Optional
 from datetime import datetime, date, timedelta
 
 import database
@@ -15,7 +17,7 @@ import consultas_ai
 import plan_entrenador
 
 st.set_page_config(
-    page_title="SportTracks AI - Tu historial de Garmin con IA",
+    page_title="SportTracks AI - Tu historial de entrenamientos con IA",
     page_icon="🏃",
     layout="wide"
 )
@@ -270,7 +272,98 @@ div.stButton > button:first-child:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# Encabezado Garmin Connect con icono e insignia oficial Team Ardil
+# Detección dinámica de dispositivos/plataformas conectadas
+token_dir_garmin = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
+tiene_garmin = os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))
+tiene_coros = coros_sync.obtener_tokens_guardados() is not None
+tiene_strava = strava_sync.obtener_tokens_strava() is not None
+
+marcas_conectadas = []
+if tiene_garmin:
+    marcas_conectadas.append("Garmin")
+if tiene_coros:
+    marcas_conectadas.append("COROS")
+if tiene_strava:
+    marcas_conectadas.append("Strava")
+
+if marcas_conectadas:
+    dispositivo_txt = " · ".join(marcas_conectadas)
+    pill_device_html = f"<span>⌚ {dispositivo_txt}</span><span style='color: #64748B;'>|</span><span style='color: #10B981; font-weight: 700;'>● Conectado</span>"
+else:
+    pill_device_html = "<span>⌚ Dispositivo</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
+
+def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
+    """
+    Sincroniza automáticamente los entrenamientos desde cualquiera de las plataformas
+    que tengan sesión activa (Garmin Connect, COROS Training Hub o Strava).
+    """
+    mensajes = []
+    total_nuevas = 0
+    total_omitidas = 0
+    plataformas_activas = 0
+
+    # 1. Garmin Connect
+    token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
+    token_file_g = os.path.join(token_dir_g, "garmin_tokens.json")
+    if os.path.isfile(token_file_g):
+        plataformas_activas += 1
+        try:
+            cliente, _ = garmin_sync.conectar_garmin("", tokenstore_dir=token_dir_g)
+            nuevas_g, omit_g = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts)
+            total_nuevas += nuevas_g
+            total_omitidas += omit_g
+            if nuevas_g > 0:
+                mensajes.append(f"Garmin: {nuevas_g} nuevo(s)")
+            else:
+                mensajes.append("Garmin al día")
+        except Exception as e:
+            mensajes.append(f"Garmin: {e}")
+
+    # 2. COROS Training Hub
+    if coros_sync.obtener_tokens_guardados():
+        plataformas_activas += 1
+        try:
+            res_c = coros_sync.sincronizar_actividades_coros(max_actividades=max_acts)
+            if res_c.get("status") == "ok":
+                n_c = res_c.get("nuevos", 0)
+                o_c = res_c.get("existentes", 0)
+                total_nuevas += n_c
+                total_omitidas += o_c
+                if n_c > 0:
+                    mensajes.append(f"COROS: {n_c} nuevo(s)")
+                else:
+                    mensajes.append("COROS al día")
+            else:
+                mensajes.append(f"COROS: {res_c.get('mensaje')}")
+        except Exception as e:
+            mensajes.append(f"COROS: {e}")
+
+    # 3. Strava
+    if strava_sync.obtener_tokens_strava():
+        plataformas_activas += 1
+        try:
+            res_s = strava_sync.sincronizar_actividades_strava(max_actividades=max_acts)
+            if res_s.get("status") == "ok":
+                n_s = res_s.get("nuevos", 0)
+                o_s = res_s.get("existentes", 0)
+                total_nuevas += n_s
+                total_omitidas += o_s
+                if n_s > 0:
+                    mensajes.append(f"Strava: {n_s} nuevo(s)")
+                else:
+                    mensajes.append("Strava al día")
+            else:
+                mensajes.append(f"Strava: {res_s.get('mensaje')}")
+        except Exception as e:
+            mensajes.append(f"Strava: {e}")
+
+    if plataformas_activas == 0:
+        return 0, 0, "No hay ninguna plataforma vinculada todavía. Puedes conectar tu cuenta de Garmin, COROS o Strava en la pestaña '👤 Personal'."
+
+    detalle = " · ".join(mensajes)
+    return total_nuevas, total_omitidas, detalle
+
+# Encabezado SportTracks AI con icono e insignia oficial Team Ardil
 ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
 ardil_pill_html = f'<div style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
 
@@ -280,7 +373,7 @@ st.markdown(f"""
         {ardil_icon_html}
         <div>
             <div class="garmin-brand-title">
-                GARMIN CONNECT<span style="color: #00A3E0; font-size: 13px; vertical-align: super;">™</span>
+                SPORTTRACKS<span style="color: #00A3E0; font-size: 13px; vertical-align: super;"> AI</span>
             </div>
             <div class="garmin-brand-sub">Team Ardil · Athletics Coach | Salva Andreo</div>
         </div>
@@ -288,9 +381,7 @@ st.markdown(f"""
     <div style="display: flex; align-items: center; gap: 16px;">
         {ardil_pill_html}
         <div class="garmin-device-pill">
-            <span>⌚ Forerunner</span>
-            <span style="color: #64748B;">|</span>
-            <span style="color: #10B981; font-weight: 700;">● Conectado</span>
+            {pill_device_html}
         </div>
         <div class="garmin-avatar">SA</div>
     </div>
@@ -473,8 +564,25 @@ with tab_home:
         mejor_serie_str = "3:26"
         media_serie_str = "3:33"
 
-    # 1. "Lo esencial" (3 tarjetas destacadas)
-    st.markdown("<div style='margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px;'>⚡ Lo Esencial</div>", unsafe_allow_html=True)
+    # 1. "Lo esencial" (3 tarjetas destacadas) con botón de Sincronizar directo
+    c_hdr_es, c_hdr_sync = st.columns([4.2, 1.3])
+    with c_hdr_es:
+        st.markdown("<div style='margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px; padding-top: 8px;'>⚡ Lo Esencial</div>", unsafe_allow_html=True)
+    with c_hdr_sync:
+        if st.button("🔄 Sincronizar", key="btn_sync_inicio", type="primary", use_container_width=True):
+            with st.spinner("Sincronizando entrenamientos..."):
+                nuevas, omitidas, detalle = sincronizar_actividades_todas()
+            if nuevas > 0:
+                st.success(f"🎉 ¡Sincronizado! **{nuevas}** nuevos entrenamientos ({detalle}).")
+                time.sleep(1)
+                st.rerun()
+            elif "No hay ninguna plataforma" in detalle:
+                st.warning(detalle)
+            elif "error" in detalle.lower():
+                st.error(f"Aviso durante la sincronización: {detalle}")
+            else:
+                st.info(f"✅ Todo al día ({detalle}).")
+
     c_es1, c_es2, c_es3 = st.columns(3)
     
     with c_es1:
@@ -1375,7 +1483,7 @@ def render_sincronizar_garmin():
 
     if tiene_sesion:
         st.success("✅ **Sesión de Garmin Connect guardada activamente en este ordenador.**")
-        if st.button("⚡ Sincronización Rápida a 1 Clic (Descargar nuevos entrenos)", type="primary"):
+        if st.button("🔄 Sincronizar", type="primary", key="btn_sync_garmin_panel"):
             progress_bar = st.progress(0)
             status_text = st.empty()
 
@@ -1480,7 +1588,7 @@ def render_sincronizar_coros():
 
         col_sync, col_logout = st.columns([3, 1])
         with col_sync:
-            if st.button("⚡ Sincronización Rápida COROS a 1 Clic (Descargar nuevos entrenos)", type="primary", use_container_width=True):
+            if st.button("🔄 Sincronizar", type="primary", key="btn_sync_coros_panel", use_container_width=True):
                 p_bar = st.progress(0)
                 st_text = st.empty()
 
@@ -1578,7 +1686,7 @@ def render_sincronizar_strava():
 
         col_sync, col_logout = st.columns([3, 1])
         with col_sync:
-            if st.button("⚡ Sincronización Rápida Strava a 1 Clic", type="primary", use_container_width=True):
+            if st.button("🔄 Sincronizar", type="primary", key="btn_sync_strava_panel", use_container_width=True):
                 p_bar = st.progress(0)
                 st_text = st.empty()
 
