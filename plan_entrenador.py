@@ -242,10 +242,14 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]]) -> Dict[str, Any]
 
         # 1. Comprobar si hay entreno en la fecha exacta
         if f_plan in mapa_reales and mapa_reales[f_plan]:
-            # Asignar el primer entreno del día
-            e_real = mapa_reales[f_plan][0]
+            # Si hay varios en el mismo día (ej. calentamiento + carrera/rodaje), asignar el de mayor distancia
+            candidatos_dia = mapa_reales[f_plan]
+            e_real = max(candidatos_dia, key=lambda x: x["distancia_km"])
             item["garmin_entreno"] = e_real
-            ids_reales_asignados.add(e_real["id"])
+
+            # Asignar todos los entrenos de ese día para evitar que micro-calentamientos queden huérfanos
+            for cand in candidatos_dia:
+                ids_reales_asignados.add(cand["id"])
 
             if es_descanso:
                 item["estado"] = "⚠️ Entreno en día de descanso"
@@ -264,8 +268,11 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]]) -> Dict[str, Any]
             else:
                 item["estado"] = "📅 Futuro"
         else:
-            # 2. Si no hay entreno en el día exacto pero es pasado o hoy, buscar si se movió a ±1 o ±2 días
-            if f_plan <= hoy_str:
+            # 2. Si es hoy y no hay entreno registrado aún
+            if f_plan == hoy_str:
+                item["estado"] = "⏳ Programado para hoy"
+            elif f_plan < hoy_str:
+                # 3. Solo para días pasados: buscar si se movió a ±1 o ±2 días
                 f_dt = datetime.strptime(f_plan, "%Y-%m-%d")
                 desplazado_encontrado = None
 
