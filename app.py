@@ -1154,7 +1154,11 @@ with tab_plan:
             with st.container():
                 c_dia, c_plan, c_garmin, c_estado = st.columns([1.5, 3.5, 3, 1.5])
                 with c_dia:
-                    st.markdown(f"**{item['dia_semana']}**")
+                    es_hoy = (item['fecha'] == hoy_str)
+                    if es_hoy:
+                        st.markdown(f"**{item['dia_semana']}** <span style='background: #0078D4; color: white; padding: 2px 7px; border-radius: 6px; font-size: 0.72rem; font-weight: 700;'>HOY</span>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"**{item['dia_semana']}**")
                     st.caption(f"📅 {item['fecha']}")
                 with c_plan:
                     st.markdown(f"**{item['titulo_sugerido']}**")
