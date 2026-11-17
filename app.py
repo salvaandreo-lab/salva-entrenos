@@ -816,33 +816,55 @@ with tab_home:
 
     with col_focus_right:
         # Tarjeta Plan de Entrenamiento · Esta Semana (Google Docs)
-        st.markdown("""
+        # Identificar dinámicamente la semana actual según la fecha de hoy
+        hoy = date.today()
+        hoy_str = hoy.strftime("%Y-%m-%d")
+        lunes_actual = hoy - timedelta(days=hoy.weekday())
+        domingo_actual = lunes_actual + timedelta(days=6)
+        lunes_str = lunes_actual.strftime("%Y-%m-%d")
+        domingo_str = domingo_actual.strftime("%Y-%m-%d")
+
+        semana_actual_nombre = None
+        for p in plan_dias:
+            if p.get("fecha") == hoy_str and p.get("semana"):
+                semana_actual_nombre = p["semana"]
+                break
+
+        if semana_actual_nombre:
+            fechas_semana_actual = {p["fecha"] for p in plan_dias if p.get("semana") == semana_actual_nombre}
+            dias_esta_sem = [c for c in comparativa_plan if c.get("fecha") in fechas_semana_actual]
+            semana_titulo = semana_actual_nombre.replace('\n', ' ').strip()
+        else:
+            dias_esta_sem = [c for c in comparativa_plan if lunes_str <= c.get("fecha", "") <= domingo_str]
+            semana_titulo = f"{lunes_actual.strftime('%d-%m')} al {domingo_actual.strftime('%d-%m')}"
+
+        if not dias_esta_sem and comparativa_plan:
+            dias_esta_sem = comparativa_plan[-7:]
+            semana_titulo = "Semana reciente"
+
+        st.markdown(f"""
         <div class="garmin-card">
             <div class="garmin-card-header">
                 <div class="garmin-card-title">
-                    <span style="font-size: 18px;">📋</span> PLAN DEL ENTRENADOR · ESTA SEMANA
+                    <span style="font-size: 18px;">📋</span> PLAN DEL ENTRENADOR · ESTA SEMANA <span style="font-size: 12px; color: #64748B; font-weight: normal;">({semana_titulo})</span>
                 </div>
                 <span class="garmin-badge-blue">Google Doc</span>
             </div>
         """, unsafe_allow_html=True)
-
-        # Mostrar los días de la semana actual
-        dias_esta_sem = [
-            c for c in comparativa_plan
-            if "09-11" in c.get("semana", "") or "15-11" in c.get("semana", "") or any(d in c.get("fecha", "") for d in ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"])
-        ]
-        if not dias_esta_sem:
-            dias_esta_sem = comparativa_plan[-7:] if comparativa_plan else []
 
         for d in dias_esta_sem:
             g = d.get("garmin_entreno")
             badge_cls = "garmin-badge-green" if "Cumplido" in d.get("estado", "") else ("garmin-badge-gray" if d.get("es_descanso") else "garmin-badge-orange")
             garmin_txt = f"🏃 {g['distancia_km']} km | {g['tiempo_formateado']} | {g['ritmo_medio_minkm']}/km" if g else ("💤 Descanso" if d.get("es_descanso") else "⏳ Pendiente de registrar")
             
+            es_hoy = (d.get('fecha') == hoy_str)
+            bg_border = "background: #EFF6FF; border: 1.5px solid #3B82F6;" if es_hoy else "background: #F8FAFC; border: 1px solid #E2E8F0;"
+            hoy_badge = ' <span style="background: #0078D4; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">HOY</span>' if es_hoy else ""
+
             st.markdown(f"""
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0;">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; {bg_border} border-radius: 8px;">
                 <div>
-                    <div style="font-size: 12px; font-weight: 700; color: #181C20;">{d.get('dia_semana', '')} · <span style="color:#64748B; font-weight:normal;">{d.get('fecha', '')}</span></div>
+                    <div style="font-size: 12px; font-weight: 700; color: #181C20;">{d.get('dia_semana', '')} · <span style="color:#64748B; font-weight:normal;">{d.get('fecha', '')}</span>{hoy_badge}</div>
                     <div style="font-size: 13px; font-weight: 700; color: #007CC3;">{d.get('titulo_sugerido', '')}</div>
                     <div style="font-size: 11px; color: #64748B;">{garmin_txt}</div>
                 </div>
