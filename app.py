@@ -14,7 +14,9 @@ import database
 import garmin_sync
 import coros_sync
 import strava_sync
+import importlib
 import consultas_ai
+importlib.reload(consultas_ai)
 import plan_entrenador
 
 st.set_page_config(
@@ -875,11 +877,35 @@ with tab_chat:
     # Renderizar historial de mensajes
     for idx, msg in enumerate(st.session_state.chat_history):
         with st.chat_message(msg["role"]):
+            # Detección retroactiva para mensajes antiguos en memoria
+            faf = msg.get("frente_a_frente")
+            if not faf and "### 🏅 Historial encontrado para" in msg.get("content", ""):
+                m_lugar = re.search(r"Historial encontrado para '([^']+)'", msg.get("content", ""))
+                if m_lugar:
+                    lugar_nombre = m_lugar.group(1).lower()
+                    faf = consultas_ai.obtener_datos_frente_a_frente(lugar_nombre)
+                    if faf and faf.get("total_sesiones", 0) > 0:
+                        msg["frente_a_frente"] = faf
+                        # Reconstruir la tabla limpia sin sesiones demo antiguas
+                        filas = faf["todas_filas"]
+                        respuesta_md = f"### 🏅 Historial encontrado para '{lugar_nombre.capitalize()}':\n\n"
+                        respuesta_md += f"Se han registrado **{len(filas)}** participaciones/sesiones:\n\n"
+                        respuesta_md += "| Fecha | Título / Evento | Distancia | Tiempo | Ritmo Medio | FC Media |\n"
+                        respuesta_md += "|---|---|---|---|---|---|\n"
+                        for f in filas:
+                            titulo_display = f["titulo"]
+                            if f.get("es_calentamiento"):
+                                titulo_display += " *(Calentamiento)*"
+                            elif faf.get("pb") and f["fecha"][:10] == faf["pb"]["fecha"]:
+                                titulo_display += " *(PB 🥇)*"
+                            fc_str = f"{f['fc_media']} ppm" if f.get("fc_media") else "- ppm"
+                            respuesta_md += f"| {f['fecha'][:10]} | {titulo_display} | {f['distancia_km']} km | {f['tiempo_formateado']} | {f['ritmo_medio_minkm']} min/km | {fc_str} |\n"
+                        msg["content"] = respuesta_md
+
             st.markdown(msg["content"])
             
             # Módulo Frente a Frente si está presente en el mensaje
-            if msg.get("frente_a_frente"):
-                faf = msg["frente_a_frente"]
+            if faf:
                 lugar = faf["lugar"]
                 n_ed = faf.get("num_ediciones", 0)
                 cat_principal = faf.get("categoria_seleccionada", "Competición")
