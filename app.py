@@ -1000,11 +1000,11 @@ with tab_chat:
                     # Análisis Táctico Team Ardil
                     analisis_texto = faf.get("analisis_coach") or consultas_ai.generar_analisis_tactico_coach(lugar, cat_sel, datos_cat.get("ediciones_cron", []), pb, ultima)
                     st.markdown(f"""
-                    <div style="background: rgba(0, 120, 212, 0.12); border-left: 4px solid #0078D4; padding: 14px 18px; border-radius: 8px; margin-top: 15px;">
+                    <div style="background: #0F172A; border: 1px solid #1E3A8A; border-left: 5px solid #0078D4; padding: 14px 18px; border-radius: 8px; margin-top: 15px;">
                         <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #60A5FA; margin-bottom: 6px;">
                             <span>🗣️ Voz del Míster · Análisis Táctico Team Ardil</span>
                         </div>
-                        <div style="font-size: 0.92rem; color: #E2E8F0; line-height: 1.5;">
+                        <div style="font-size: 0.92rem; color: #F1F5F9; line-height: 1.55;">
                             {analisis_texto}
                         </div>
                     </div>
