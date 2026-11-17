@@ -1093,14 +1093,57 @@ with tab_plan:
         st.markdown("#### 📅 Desglose Semanal: Plan vs. Garmin")
         semanas_disponibles = list(dict.fromkeys(p["semana"] for p in plan_dias if p.get("semana")))
         
-        # Seleccionar por defecto la semana actual (09-11 al 15-11)
+        # Seleccionar dinámicamente por defecto la semana del día actual
+        hoy = date.today()
+        hoy_str = hoy.strftime("%Y-%m-%d")
+
+        semana_fechas = {}
+        for p in plan_dias:
+            s_name = p.get("semana")
+            f_val = p.get("fecha")
+            if s_name and f_val:
+                semana_fechas.setdefault(s_name, []).append(f_val)
+
         def_idx = 0
+        encontrado = False
+
+        # 1. Búsqueda directa: semana que contenga la fecha de hoy o cuyo rango la englobe
         for idx_s, s in enumerate(semanas_disponibles):
-            if "09-11" in s or "15-11" in s:
+            fechas_sem = semana_fechas.get(s, [])
+            if hoy_str in fechas_sem:
                 def_idx = idx_s
+                encontrado = True
+                break
+            elif fechas_sem and min(fechas_sem) <= hoy_str <= max(fechas_sem):
+                def_idx = idx_s
+                encontrado = True
                 break
 
-        semana_sel = st.selectbox("Seleccionar semana del plan:", semanas_disponibles, index=def_idx)
+        # 2. Si hoy cae fuera del plan (ej. antes del inicio o tras finalizar), seleccionar la semana más próxima
+        if not encontrado and semanas_disponibles:
+            distancias = []
+            for idx_s, s in enumerate(semanas_disponibles):
+                fechas_sem = semana_fechas.get(s, [])
+                if fechas_sem:
+                    min_d = min(abs((datetime.strptime(f, "%Y-%m-%d").date() - hoy).days) for f in fechas_sem)
+                    distancias.append((min_d, idx_s))
+            if distancias:
+                distancias.sort()
+                def_idx = distancias[0][1]
+
+        def formatear_semana_label(s: str) -> str:
+            limpio = s.replace("\n", " ").strip()
+            fechas_sem = semana_fechas.get(s, [])
+            if hoy_str in fechas_sem or (fechas_sem and min(fechas_sem) <= hoy_str <= max(fechas_sem)):
+                return f"{limpio} (Semana actual)"
+            return limpio
+
+        semana_sel = st.selectbox(
+            "Seleccionar semana del plan:",
+            semanas_disponibles,
+            index=def_idx,
+            format_func=formatear_semana_label
+        )
 
         dias_semana_sel = [
             item for item in comparativa 
