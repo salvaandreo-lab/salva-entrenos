@@ -563,16 +563,26 @@ with tab_home:
     else:
         tit_ult, km_ult, t_ult, r_ult, cal_ult, f_ult, ub_ult = "Sin registros", "0.00", "--", "--", "--", "--", ""
 
-    # --- 2. DATO: PRÓXIMA COMPETICIÓN ---
+    # --- 2. DATO: PRÓXIMA COMPETICIÓN O RODAJE LARGO DEL DOMINGO ---
     hoy_str = date.today().strftime("%Y-%m-%d")
+
+    def es_competicion_real(p):
+        texto = (p.get("titulo_sugerido", "") + " " + p.get("plan_descripcion", "") + " " + p.get("descripcion", "")).lower()
+        if any(k in texto for k in ["rodaje", "series", "descanso", "fuerza", "long run", "tabla", "calentamiento"]):
+            return False
+        if any(k in texto for k in ["maratón", "maraton", "media maratón", "media maraton", "competición", "competicion", "dorsal", "campeonato", "cross", "trail"]):
+            return True
+        if "carrera" in texto and "rodaje" not in texto:
+            return True
+        return False
+
     carreras_futuras = [
         p for p in plan_dias
-        if p.get("fecha", "") >= hoy_str and (
-            p.get("es_carrera") or any(k in (p.get("titulo_sugerido", "") + " " + p.get("plan_descripcion", "")).lower() for k in ["marat", "media", "competi", "carrera", "10k", "5k", "campeonato", "cross", "trail"])
-        )
+        if p.get("fecha", "") >= hoy_str and es_competicion_real(p)
     ]
 
     if carreras_futuras:
+        hay_competicion = True
         prox_carrera = carreras_futuras[0]
         tit_comp = prox_carrera.get("titulo_sugerido") or "Competición"
         f_comp = prox_carrera.get("fecha", "")
@@ -594,13 +604,61 @@ with tab_home:
 
         dist_comp = "21.097 km" if "media" in tit_comp.lower() else ("42.195 km" if "marat" in tit_comp.lower() else ("10.0 km" if "10k" in tit_comp.lower() else "Oficial"))
         tipo_comp = "Asfalto Oficial"
+        badge_cls_comp = "garmin-badge-orange"
+        color_metrica_comp = "#D97706"
+        bg_grid_comp = "background: #FFFBEB; border: 1px solid #FDE68A;"
+        color_grid_title = "#B45309"
+        color_grid_val = "#92400E"
+        grid_col1_lbl = "📅 Fecha"
+        grid_col1_val = f_comp
+        grid_col2_lbl = "🎯 Prueba"
+        grid_col2_val = dist_comp
+        sub_aviso_comp = ""
     else:
-        tit_comp = "MEDIA MARATÓN ORIHUELA"
-        f_comp = "2026-11-15"
-        badge_comp = "¡MAÑANA!"
-        dias_comp_txt = "En 1 día"
-        dist_comp = "21.097 km"
-        tipo_comp = "Asfalto Oficial"
+        hay_competicion = False
+        # Buscar el próximo domingo en el plan (habitualmente rodaje largo / long run)
+        domingos_futuros = [p for p in plan_dias if p.get("dia_semana") == "Domingo" and p.get("fecha", "") >= hoy_str]
+        if domingos_futuros:
+            prox_dom = domingos_futuros[0]
+            f_comp = prox_dom.get("fecha", "")
+            tit_dom_sug = prox_dom.get("titulo_sugerido", "")
+            tit_comp = tit_dom_sug if any(w in tit_dom_sug.lower() for w in ["long run", "rodaje"]) else f"Rodaje Largo ({tit_dom_sug})"
+            m_km = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kms?|k)\b', prox_dom.get("descripcion", ""), re.IGNORECASE)
+            dist_comp = f"{m_km.group(1)} km" if m_km else "Tirada Larga"
+            try:
+                d_dom = date.fromisoformat(f_comp)
+                diff_dias = (d_dom - date.today()).days
+                if diff_dias == 0:
+                    badge_comp = "¡HOY DOMINGO!"
+                    dias_comp_txt = "Hoy es la tirada"
+                elif diff_dias == 1:
+                    badge_comp = "¡ESTE DOMINGO!"
+                    dias_comp_txt = "En 1 día"
+                else:
+                    badge_comp = f"DOMINGO · EN {diff_dias} DÍAS"
+                    dias_comp_txt = f"{diff_dias} días restantes"
+            except Exception:
+                badge_comp = "ESTE DOMINGO"
+                dias_comp_txt = f_comp
+            tipo_comp = "Rodaje Largo · Plan Míster"
+        else:
+            tit_comp = "Rodaje Largo (Domingo)"
+            f_comp = "Próximo Domingo"
+            dist_comp = "Tirada Larga"
+            badge_comp = "SIN COMPETICIÓN"
+            dias_comp_txt = "Fin de semana"
+            tipo_comp = "Entrenamiento de fondo"
+
+        badge_cls_comp = "garmin-badge-blue"
+        color_metrica_comp = "#0284C7"
+        bg_grid_comp = "background: #F0F9FF; border: 1px solid #BAE6FD;"
+        color_grid_title = "#0369A1"
+        color_grid_val = "#0C4A6E"
+        grid_col1_lbl = "📅 Próximo Domingo"
+        grid_col1_val = f_comp
+        grid_col2_lbl = "🏃 Enfoque Fondo"
+        grid_col2_val = f"Rodaje Largo ({dist_comp})"
+        sub_aviso_comp = '<div style="font-size: 11px; font-weight: 700; color: #64748B; margin-bottom: 3px;">🚫 Sin competición próxima en el plan · Objetivo:</div>'
 
     # --- 3. DATO: ÚLTIMO DÍA DE SERIES Y DATOS (Solo series reales confirmadas por el plan) ---
     query_ult_series = """
@@ -702,24 +760,25 @@ with tab_home:
         <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🎯 Próxima Competición</span>
-                <span class="garmin-badge-orange">{badge_comp}</span>
+                <span class="{badge_cls_comp}">{badge_comp}</span>
             </div>
+            {sub_aviso_comp}
             <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                 {tit_comp}
             </div>
             <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_comp} · {tipo_comp}</div>
             <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
-                <span style="font-size: 32px; font-weight: 800; color: #D97706; line-height: 1;">{dist_comp}</span>
+                <span style="font-size: 32px; font-weight: 800; color: {color_metrica_comp}; line-height: 1;">{dist_comp}</span>
                 <span style="font-size: 13px; font-weight: 700; color: #64748B; margin-left: 4px;">({dias_comp_txt})</span>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #FFFBEB; padding: 10px 12px; border-radius: 8px; border: 1px solid #FDE68A;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; {bg_grid_comp} padding: 10px 12px; border-radius: 8px;">
                 <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #B45309; text-transform: uppercase;">📅 Fecha</div>
-                    <div style="font-size: 14px; font-weight: 800; color: #92400E;">{f_comp}</div>
+                    <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col1_lbl}</div>
+                    <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col1_val}</div>
                 </div>
                 <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #B45309; text-transform: uppercase;">🎯 Prueba</div>
-                    <div style="font-size: 14px; font-weight: 800; color: #92400E;">{dist_comp}</div>
+                    <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col2_lbl}</div>
+                    <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col2_val}</div>
                 </div>
             </div>
         </div>
