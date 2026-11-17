@@ -3,4 +3,3 @@ pandas>=2.0.0
 plotly>=5.18.0
 fitparse>=1.2.0
 garminconnect>=0.2.14
-google-genai>=0.1.0
