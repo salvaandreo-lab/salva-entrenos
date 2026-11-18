@@ -3068,13 +3068,11 @@ with tab_personal:
         opciones_disp = [
             "👥 Gestión de Atletas y Planes",
             "🏆 Récords Personales (PB)",
-            "🎽 Ficha de Sesión e Historial",
             "📥 Sincronizar Garmin",
             "📥 Sincronizar Coros",
             "📥 Sincronizar Strava"
         ] if (es_entrenador or es_salva) else [
             "🏆 Récords Personales (PB)",
-            "🎽 Ficha de Sesión e Historial",
             "📥 Sincronizar Garmin",
             "📥 Sincronizar Coros",
             "📥 Sincronizar Strava"
@@ -3091,8 +3089,6 @@ with tab_personal:
         render_gestion_atletas()
     elif opcion_personal == "🏆 Récords Personales (PB)":
         render_records_personales()
-    elif opcion_personal == "🎽 Ficha de Sesión e Historial":
-        render_historial_sesiones()
     elif opcion_personal == "📥 Sincronizar Garmin":
         render_sincronizar_garmin()
     elif opcion_personal == "📥 Sincronizar Coros":
