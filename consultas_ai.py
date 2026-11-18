@@ -184,16 +184,16 @@ def generar_datos_categoria(ediciones: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
     }
 
-def obtener_datos_frente_a_frente(lugar_o_carrera: str, api_key: str = "") -> Optional[Dict[str, Any]]:
+def obtener_datos_frente_a_frente(lugar_o_carrera: str, api_key: str = "", usuario_id: int = 1) -> Optional[Dict[str, Any]]:
     """Recupera y estructura las ediciones históricas de una ubicación o carrera para el módulo Frente a Frente."""
     termino = f"%{lugar_o_carrera.lower().strip()}%"
     query = """
     SELECT id, fecha, titulo, distancia_km, tiempo_total_s, tiempo_formateado, ritmo_medio_minkm, fc_media, ubicacion
     FROM entrenamientos
-    WHERE LOWER(titulo) LIKE ? OR LOWER(ubicacion) LIKE ?
+    WHERE (LOWER(titulo) LIKE ? OR LOWER(ubicacion) LIKE ?) AND usuario_id = ?
     ORDER BY fecha DESC
     """
-    filas = database.ejecutar_consulta_sql(query, (termino, termino))
+    filas = database.ejecutar_consulta_sql(query, (termino, termino, usuario_id))
     if not filas or "error" in filas[0]:
         return None
         
@@ -365,6 +365,7 @@ BASE DE DATOS SQLITE (HISTORIAL DE ENTRENAMIENTOS DE ATLETISMO):
 
 Tabla 1: 'entrenamientos' (Resumen de cada sesión)
 - id: INTEGER PRIMARY KEY
+- usuario_id: INTEGER (ID del atleta propietario, ej: 1 para Salva)
 - fecha: TEXT (Formato 'YYYY-MM-DD HH:MM:SS')
 - titulo: TEXT (Título de la sesión, ej: 'Series de 400m en Pista', 'Media Maratón de Orihuela')
 - deporte: TEXT (ej: 'running')
@@ -393,16 +394,18 @@ Tabla 2: 'series_laps' (Detalle de cada vuelta o serie dentro de un entreno)
 - tipo_intervalo: TEXT (ej: 'serie_400m', 'calentamiento', 'enfriamiento')
 """
 
-def responder_con_text_to_sql(pregunta: str, api_key: str) -> Optional[str]:
+def responder_con_text_to_sql(pregunta: str, api_key: str, usuario_id: int = 1) -> Optional[str]:
     """Motor inteligente Text-to-SQL con Gemini para preguntas deportivas generales."""
     try:
         prompt_sql = f"""Eres un experto desarrollador de bases de datos SQLite para deportes y running.
 {ESQUEMA_BD}
 
 Pregunta del atleta: "{pregunta}"
+ID del atleta actual en consulta: {usuario_id}
 
 INSTRUCCIONES OBLIGATORIAS:
 - Genera ÚNICAMENTE una consulta SQL (SELECT ...) válida para SQLite que responda exactamente a la pregunta.
+- Filtra siempre por el atleta actual: `e.usuario_id = {usuario_id}` en la tabla entrenamientos (o `usuario_id = {usuario_id}`).
 - Para series de 400m usa: `s.distancia_m BETWEEN 380 AND 420`.
 - Para series de 1000m usa: `s.distancia_m BETWEEN 950 AND 1050`.
 - Para series de 2000m usa: `s.distancia_m BETWEEN 1900 AND 2100`.
@@ -445,7 +448,7 @@ INSTRUCCIONES DE RESPUESTA:
 
     return None
 
-def responder_consulta_entrenamientos(pregunta: str) -> Any:
+def responder_consulta_entrenamientos(pregunta: str, usuario_id: int = 1) -> Any:
     """
     Función principal de consulta del Entrenador IA:
     1. Si la pregunta menciona una ubicación o carrera (ej. 'Orihuela', 'Santa Pola', etc.),
@@ -460,7 +463,7 @@ def responder_consulta_entrenamientos(pregunta: str) -> Any:
     # ==================== CASO 1: CARRERA O UBICACIÓN (FRENTE A FRENTE) ====================
     lugar = detectar_ubicacion_en_pregunta(pregunta)
     if lugar:
-        faf_datos = obtener_datos_frente_a_frente(lugar, api_key=api_key)
+        faf_datos = obtener_datos_frente_a_frente(lugar, api_key=api_key, usuario_id=usuario_id)
         if faf_datos and faf_datos.get("total_sesiones", 0) > 0:
             filas = faf_datos["todas_filas"]
             respuesta_md = f"### 🏅 Historial encontrado para '{lugar.capitalize()}':\n\n"
@@ -485,7 +488,7 @@ def responder_consulta_entrenamientos(pregunta: str) -> Any:
 
     # ==================== CASO 2: TEXT-TO-SQL CON GEMINI ====================
     if api_key:
-        respuesta_motor = responder_con_text_to_sql(pregunta, api_key)
+        respuesta_motor = responder_con_text_to_sql(pregunta, api_key, usuario_id=usuario_id)
         if respuesta_motor:
             return respuesta_motor
 
@@ -502,10 +505,10 @@ def responder_consulta_entrenamientos(pregunta: str) -> Any:
                s.tiempo_formateado, s.ritmo_minkm, s.fc_media, s.fc_max
         FROM series_laps s
         JOIN entrenamientos e ON s.entrenamiento_id = e.id
-        WHERE s.distancia_m BETWEEN ? AND ?
+        WHERE s.distancia_m BETWEEN ? AND ? AND e.usuario_id = ?
         ORDER BY e.fecha DESC, s.lap_numero ASC
         """
-        filas = database.ejecutar_consulta_sql(query, (min_m, max_m))
+        filas = database.ejecutar_consulta_sql(query, (min_m, max_m, usuario_id))
         if not filas:
             return f"No he encontrado series de aproximadamente {distancia} metros en tu historial registrado."
 
@@ -529,7 +532,7 @@ def responder_consulta_entrenamientos(pregunta: str) -> Any:
         return respuesta
 
     # Resumen general
-    stats = database.obtener_resumen_estadisticas()
+    stats = database.obtener_resumen_estadisticas(usuario_id=usuario_id)
     return (f"📊 **Resumen de tu historial en SportTracks:**\n\n"
             f"- **Entrenamientos totales:** {stats['total_entrenos']}\n"
             f"- **Kilómetros acumulados:** {stats['total_km']} km\n"
