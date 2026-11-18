@@ -542,7 +542,10 @@ def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str =
         "trail", "cross", "trofeo", "campeonato", "rodaje", "tirada",
         "long run", "suave", "regenerativo", "recuperación", "recuperacion", "caco"
     ]
-    palabras_series = ["serie", "series", "interval", "x1000", "x400", "x2000", "x500", "x200", "x800", "x1500"]
+    palabras_series = [
+        "serie", "series", "interval", "x1000", "x400", "x2000", "x500", "x200", "x300", "x800",
+        "x1500", "x3000", "x4000", "4000m", "3000m", "2000m", "1000m", "800m", "500m", "400m", "300m", "200m"
+    ]
 
     if any(p in texto for p in palabras_excluidas) and not any(s in texto for s in palabras_series):
         return False
@@ -552,7 +555,7 @@ def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str =
         _, laps = database.obtener_detalle_entrenamiento(entreno_id)
         if laps:
             _, resumen = database.clasificar_vueltas_sesion(laps)
-            if resumen.get("num_recuperaciones", 0) >= 1:
+            if resumen.get("num_recuperaciones", 0) >= 1 or resumen.get("num_series", 0) >= 2:
                 return True
             if bool(re.search(r'\b\d+\s*x\s*\d+', texto) or any(s in texto for s in palabras_series)):
                 return True
@@ -1890,19 +1893,25 @@ with tab_series:
     col_s1, col_s2 = st.columns([1, 2])
     with col_s1:
         distancia_opciones = {
-            "1000m": (900, 1100),
-            "400m (Pista)": (380, 430),
-            "2000m": (1900, 2100),
-            "5000m": (4800, 5200)
+            "4000 mtrs": (3800, 4200),
+            "3000 mtrs": (2800, 3200),
+            "2000 mtrs": (1850, 2150),
+            "1000 mtrs": (900, 1100),
+            "800 mtrs": (750, 850),
+            "500 mtrs": (470, 530),
+            "400 mtrs": (370, 430),
+            "300 mtrs": (270, 330),
+            "200 mtrs": (170, 230),
         }
         dist_sel = st.selectbox(
             "Distancia de serie:",
             list(distancia_opciones.keys()),
-            index=0
+            index=3
         )
         d_min, d_max = distancia_opciones[dist_sel]
 
     # Buscar sesiones que tengan vueltas de esa distancia
+    pace_filter = "AND (s.tiempo_s / (s.distancia_m / 1000.0)) <= 280" if d_max <= 350 else ""
     query_sesiones = f"""
     SELECT e.id, e.fecha, e.titulo, e.ubicacion, e.notas_entrenador,
            COUNT(s.id) as num_series,
@@ -1910,7 +1919,7 @@ with tab_series:
            MIN(s.tiempo_s) as min_seg
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
-    WHERE s.distancia_m BETWEEN {d_min} AND {d_max} AND e.usuario_id = ?
+    WHERE s.distancia_m BETWEEN {d_min} AND {d_max} {pace_filter} AND e.usuario_id = ?
     GROUP BY e.id
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
@@ -1938,10 +1947,11 @@ with tab_series:
             sesion_id = int(sel_sesion_str.split(" | ")[0])
 
         # Cargar los laps exactos de esa sesión
+        pace_filter_laps = "AND (tiempo_s / (distancia_m / 1000.0)) <= 280" if d_max <= 350 else ""
         query_laps = f"""
         SELECT lap_numero, distancia_m, tiempo_s, tiempo_formateado, ritmo_minkm, fc_media, fc_max
         FROM series_laps
-        WHERE entrenamiento_id = {sesion_id} AND distancia_m BETWEEN {d_min} AND {d_max}
+        WHERE entrenamiento_id = {sesion_id} AND distancia_m BETWEEN {d_min} AND {d_max} {pace_filter_laps}
         ORDER BY lap_numero ASC
         """
         laps_series_raw = database.ejecutar_consulta_sql(query_laps)
