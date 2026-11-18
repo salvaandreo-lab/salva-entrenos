@@ -416,21 +416,35 @@ with st.sidebar:
     st.markdown("### 🏃 Team Ardil Hub")
     st.caption("Plataforma de Atletismo y Rendimiento")
 
-    nombres_usuarios = [f"{u.get('avatar', '🏃')} {u['nombre']} ({'Míster' if u['rol'] == 'entrenador' else 'Atleta'})" for u in usuarios_db]
-    idx_actual = next((i for i, u in enumerate(usuarios_db) if u["id"] == usuario_activo["id"]), 0)
+    uids_disponibles = [u["id"] for u in usuarios_db]
+    cur_uid = st.session_state["usuario_id_activo"]
+    if cur_uid not in uids_disponibles:
+        cur_uid = 1
+        st.session_state["usuario_id_activo"] = 1
 
-    sel_perfil = st.selectbox(
+    idx_actual = uids_disponibles.index(cur_uid)
+
+    def on_cambio_perfil():
+        uid_sel = st.session_state.get("selector_perfil_sidebar")
+        if uid_sel:
+            st.session_state["usuario_id_activo"] = uid_sel
+            if uid_sel == 2:
+                st.session_state["mister_inspeccionando"] = False
+
+    def formato_usuario(uid):
+        u = next((item for item in usuarios_db if item["id"] == uid), None)
+        if not u:
+            return str(uid)
+        return f"{u.get('avatar', '🏃')} {u['nombre']} ({'Míster' if u['rol'] == 'entrenador' else 'Atleta'})"
+
+    st.selectbox(
         "👤 Perfil Activo:",
-        nombres_usuarios,
+        options=uids_disponibles,
         index=idx_actual,
-        key="selector_perfil_sidebar"
+        format_func=formato_usuario,
+        key="selector_perfil_sidebar",
+        on_change=on_cambio_perfil
     )
-    nuevo_uid = usuarios_db[nombres_usuarios.index(sel_perfil)]["id"]
-    if nuevo_uid != st.session_state["usuario_id_activo"]:
-        st.session_state["usuario_id_activo"] = nuevo_uid
-        if nuevo_uid == 2:
-            st.session_state["mister_inspeccionando"] = False
-        st.rerun()
 
     st.markdown("---")
 
@@ -442,15 +456,21 @@ with st.sidebar:
             n_avatar = st.text_input("Iniciales Avatar (2 letras):", placeholder="PM", max_chars=3, key="nuevo_atleta_avatar")
             if st.button("Guardar Atleta", use_container_width=True, key="btn_guardar_nuevo_atleta"):
                 if n_nombre and n_alias:
-                    database.crear_o_actualizar_usuario(
-                        nombre=n_nombre.strip(),
-                        alias=n_alias.lower().strip(),
-                        rol="atleta",
-                        entrenador_id=2,
-                        avatar=n_avatar.upper().strip() if n_avatar else "🏃"
-                    )
-                    st.success(f"Atleta '{n_nombre}' registrado.")
-                    st.rerun()
+                    clean_ali = n_alias.lower().strip()
+                    if clean_ali == "salva":
+                        st.error("El alias 'salva' está reservado para tu perfil principal.")
+                    else:
+                        nuevo_id = database.crear_o_actualizar_usuario(
+                            nombre=n_nombre.strip(),
+                            alias=clean_ali,
+                            rol="atleta",
+                            entrenador_id=2,
+                            avatar=n_avatar.upper().strip() if n_avatar else "🏃"
+                        )
+                        st.session_state["usuario_id_activo"] = nuevo_id
+                        st.session_state["selector_perfil_sidebar"] = nuevo_id
+                        st.success(f"Atleta '{n_nombre}' registrado.")
+                        st.rerun()
                 else:
                     st.warning("Introduce al menos nombre y alias.")
 
@@ -488,6 +508,7 @@ if st.session_state.get("mister_inspeccionando") and not es_entrenador:
     with col_insp2:
         if st.button("🔙 Volver al Míster", type="primary", use_container_width=True, key="btn_volver_mister"):
             st.session_state["usuario_id_activo"] = 2
+            st.session_state["selector_perfil_sidebar"] = 2
             st.session_state["mister_inspeccionando"] = False
             st.rerun()
 
@@ -498,6 +519,8 @@ total_entrenos = stats.get("total_entrenos", 0)
 media_km = round(total_km / max(1, total_entrenos), 1)
 
 doc_url = usuario_activo.get("doc_plan_url")
+if not doc_url and es_salva:
+    doc_url = plan_entrenador.obtener_doc_url()
 
 @st.cache_data(ttl=120)
 def cargar_plan_y_comparativa(url_doc, u_id=1):
@@ -515,17 +538,15 @@ comparativa_plan = reconciliacion.get("comparativa", [])
 
 def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str = "", plan_comparativa: list = None) -> bool:
     """
-    Verifica de forma estricta si una actividad es verdaderamente una sesión de series.
-    Regla del entrenador:
-    1. Si la fecha está en el plan del entrenador, SOLO es serie si el entrenador indicó series explícitamente.
-       Si en el plan pone carrera, rodaje, descanso, tirada o fuerza sin series, NUNCA es serie.
-    2. Si es una fecha fuera del plan (histórico):
-       - Se descartan carreras, competiciones y rodajes continuos.
-       - Se verifica si existen pausas/recuperaciones intermedias entre vueltas o título explícito.
+    Verifica si una actividad es verdaderamente una sesión de series:
+    1. Si la fecha coincide con el plan del entrenador, tiene prioridad la prescripción del míster.
+    2. Si no coincide o es histórico:
+       - Se descartan competiciones oficiales (maratón, media, 10k oficial, dorsal).
+       - Se analizan las vueltas registradas: si tiene repeticiones a ritmo vivo con recuperaciones o título de series, es serie.
     """
     f_dia = str(fecha)[:10]
 
-    # 1. Comprobación contra el Plan del Entrenador (Prioridad absoluta)
+    # 1. Comprobación directa contra el Plan del Entrenador (si coincide la fecha)
     if plan_comparativa:
         for p in plan_comparativa:
             if p.get("fecha") == f_dia:
@@ -534,35 +555,41 @@ def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str =
                 tiene_patron = bool(re.search(r'\b\d+\s*x\s*\d+', desc) or "serie" in desc or "series" in tit_sug)
                 if p.get("es_series") or tiene_patron:
                     return True
-                return False
+                else:
+                    return False
 
-    # 2. Descarte por palabras clave excluyentes (carreras, competiciones, rodajes continuos)
     texto = f"{titulo or ''} {notas or ''}".lower()
-    palabras_excluidas = [
-        "maratón", "maraton", "media maratón", "media maraton", "carrera",
-        "competición", "competicion", "dorsal", "10k", "5k", "san silvestre",
-        "trail", "cross", "trofeo", "campeonato", "rodaje", "tirada",
-        "long run", "suave", "regenerativo", "recuperación", "recuperacion", "caco"
+
+    # 2. Descarte por competiciones oficiales reales (descartar si no hay mención de series)
+    competiciones = [
+        "maratón", "maraton", "media maratón", "media maraton",
+        "competición", "competicion", "dorsal", "san silvestre",
+        "trail", "cross", "trofeo", "campeonato", "carrera popular", "carrera oficial"
     ]
     palabras_series = [
         "serie", "series", "interval", "x1000", "x400", "x2000", "x500", "x200", "x300", "x800",
         "x1500", "x3000", "x4000", "4000m", "3000m", "2000m", "1000m", "800m", "500m", "400m", "300m", "200m"
     ]
 
-    if any(p in texto for p in palabras_excluidas) and not any(s in texto for s in palabras_series):
+    if any(c in texto for c in competiciones) and not any(s in texto for s in palabras_series):
         return False
 
-    # 3. Comprobar si tiene estructura de series con recuperaciones entre repeticiones
+    # 3. Comprobar si tiene estructura real de series según sus vueltas/laps
     try:
         _, laps = database.obtener_detalle_entrenamiento(entreno_id)
-        if laps:
+        if laps and len(laps) >= 2:
             _, resumen = database.clasificar_vueltas_sesion(laps)
-            if resumen.get("num_recuperaciones", 0) >= 1 or resumen.get("num_series", 0) >= 2:
+            num_series = resumen.get("num_series", 0)
+            num_recup = resumen.get("num_recuperaciones", 0)
+            if num_series >= 2 and num_recup >= 1:
                 return True
             if bool(re.search(r'\b\d+\s*x\s*\d+', texto) or any(s in texto for s in palabras_series)):
                 return True
     except Exception:
         pass
+
+    if bool(re.search(r'\b\d+\s*x\s*\d+', texto) or any(s in texto for s in palabras_series)):
+        return True
 
     return False
 
@@ -676,6 +703,7 @@ def render_monitor_equipo():
             with col_btn:
                 if st.button(f"🔍 Ficha {a['nombre'].split()[0]}", key=f"btn_insp_{a['id']}", use_container_width=True):
                     st.session_state["usuario_id_activo"] = a["id"]
+                    st.session_state["selector_perfil_sidebar"] = a["id"]
                     st.session_state["mister_inspeccionando"] = True
                     st.rerun()
 
@@ -1414,6 +1442,8 @@ with tab_plan:
     st.caption("Vinculado en tiempo real con el Google Doc de tu entrenador. Detecta cambios automáticos, etiquetas de series y discrepancias de fechas.")
 
     doc_url = usuario_activo.get("doc_plan_url")
+if not doc_url and es_salva:
+    doc_url = plan_entrenador.obtener_doc_url()
 
     if doc_url:
         col_p1, col_p2 = st.columns([3, 1])
@@ -2512,16 +2542,22 @@ def render_gestion_atletas():
             submit_atleta = st.form_submit_button("Dar de Alta Atleta", type="primary")
             if submit_atleta:
                 if n_nom and n_ali:
-                    database.crear_o_actualizar_usuario(
-                        nombre=n_nom.strip(),
-                        alias=n_ali.lower().strip(),
-                        rol="atleta",
-                        entrenador_id=2,
-                        avatar=n_ava.upper().strip() if n_ava else "🏃",
-                        doc_plan_url=n_url.strip() if n_url else None
-                    )
-                    st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
-                    st.rerun()
+                    clean_ali = n_ali.lower().strip()
+                    if clean_ali == "salva":
+                        st.error("El alias 'salva' está reservado para tu perfil principal.")
+                    else:
+                        nuevo_id = database.crear_o_actualizar_usuario(
+                            nombre=n_nom.strip(),
+                            alias=clean_ali,
+                            rol="atleta",
+                            entrenador_id=2,
+                            avatar=n_ava.upper().strip() if n_ava else "🏃",
+                            doc_plan_url=n_url.strip() if n_url else None
+                        )
+                        st.session_state["usuario_id_activo"] = nuevo_id
+                        st.session_state["selector_perfil_sidebar"] = nuevo_id
+                        st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
+                        st.rerun()
                 else:
                     st.warning("Introduce nombre y alias.")
     else:
