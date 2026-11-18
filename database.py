@@ -504,6 +504,110 @@ def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str
     }
     return resultado, resumen
 
+def calcular_splits_km(distancia_km: float, tiempo_total_s: float, laps: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """
+    Calcula los parciales métricos kilómetro a kilómetro (estilo Strava)
+    a partir de la distancia total, tiempo total y los laps registrados.
+    """
+    total_m = float(distancia_km or 0.0) * 1000.0
+    total_s = float(tiempo_total_s or 0.0)
+    if total_m <= 0 or total_s <= 0:
+        return []
+
+    ritmo_medio_seg_km = total_s / (total_m / 1000.0)
+
+    laps = laps or []
+    cum_pts = [(0.0, 0.0, None, None, None)]  # (dist_m, time_s, fc_media, fc_max, cadencia)
+    cur_d = 0.0
+    cur_t = 0.0
+    for l in laps:
+        d = float(l.get("distancia_m") or 0.0)
+        t = float(l.get("tiempo_s") or 0.0)
+        cur_d += d
+        cur_t += t
+        cum_pts.append((cur_d, cur_t, l.get("fc_media"), l.get("fc_max"), l.get("cadencia")))
+
+    # Si no hay laps o cubren menos del 40% del recorrido, repartir linealmente por distancia total
+    if cur_d < total_m * 0.4:
+        cum_pts = [(0.0, 0.0, None, None, None), (total_m, total_s, None, None, None)]
+
+    def time_and_stats_at(target_d):
+        for i in range(1, len(cum_pts)):
+            d0, t0, hr0, hrmax0, cad0 = cum_pts[i - 1]
+            d1, t1, hr1, hrmax1, cad1 = cum_pts[i]
+            if d0 <= target_d <= d1:
+                frac = (target_d - d0) / (d1 - d0) if d1 > d0 else 0
+                t = t0 + frac * (t1 - t0)
+                hr = hr1 if hr1 is not None else hr0
+                hrmax = hrmax1 if hrmax1 is not None else hrmax0
+                cad = cad1 if cad1 is not None else cad0
+                return t, hr, hrmax, cad
+        return cum_pts[-1][1], cum_pts[-1][2], cum_pts[-1][3], cum_pts[-1][4]
+
+    max_dist = max(total_m, cum_pts[-1][0])
+    num_kms = int(max_dist // 1000)
+    resto_m = max_dist % 1000
+
+    def seg_a_fmt(s_val):
+        s_int = int(round(s_val))
+        h = s_int // 3600
+        m = (s_int % 3600) // 60
+        sec = s_int % 60
+        if h > 0:
+            return f"{h}:{m:02d}:{sec:02d}"
+        return f"{m:02d}:{sec:02d}"
+
+    def calc_ritmo_fmt(dist_m, dur_s):
+        if dist_m <= 0 or dur_s <= 0:
+            return "--:--"
+        min_km = (dur_s / 60.0) / (dist_m / 1000.0)
+        m = int(min_km)
+        s = int(round((min_km - m) * 60))
+        if s >= 60:
+            m += 1
+            s = 0
+        return f"{m}:{s:02d}"
+
+    splits = []
+    prev_t = 0.0
+    for k in range(1, num_kms + 1):
+        target_d = k * 1000.0
+        tk, hr, hrmax, cad = time_and_stats_at(target_d)
+        dur = max(1.0, tk - prev_t)
+        prev_t = tk
+        diff_s = dur - ritmo_medio_seg_km
+        splits.append({
+            "split_numero": k,
+            "etiqueta": f"Km {k}",
+            "distancia_m": 1000.0,
+            "tiempo_s": round(dur, 1),
+            "tiempo_formateado": seg_a_fmt(dur),
+            "ritmo_minkm": calc_ritmo_fmt(1000.0, dur),
+            "desviacion_ritmo_s": round(diff_s, 1),
+            "fc_media": int(round(hr)) if hr else None,
+            "fc_max": int(round(hrmax)) if hrmax else None,
+            "cadencia": int(round(cad)) if cad else None
+        })
+
+    if resto_m >= 50:
+        dur = max(1.0, cum_pts[-1][1] - prev_t)
+        pace_s = dur / (resto_m / 1000.0)
+        diff_s = pace_s - ritmo_medio_seg_km
+        splits.append({
+            "split_numero": num_kms + 1,
+            "etiqueta": f"Km {num_kms+1} ({int(round(resto_m))}m)",
+            "distancia_m": round(resto_m, 1),
+            "tiempo_s": round(dur, 1),
+            "tiempo_formateado": seg_a_fmt(dur),
+            "ritmo_minkm": calc_ritmo_fmt(resto_m, dur),
+            "desviacion_ritmo_s": round(diff_s, 1),
+            "fc_media": int(round(cum_pts[-1][2])) if cum_pts[-1][2] else None,
+            "fc_max": int(round(cum_pts[-1][3])) if cum_pts[-1][3] else None,
+            "cadencia": int(round(cum_pts[-1][4])) if cum_pts[-1][4] else None
+        })
+
+    return splits
+
 def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any]:
     """Obtiene el estado general de todos los atletas asignados a un entrenador."""
     conn = get_connection()
