@@ -1227,21 +1227,23 @@ def render_tab_home_atleta():
 
 # Pestañas principales organizadas de forma limpia
 if es_entrenador:
-    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
+    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([
         "👑 Monitor del Equipo",
         "💬 Asistente IA del Míster",
         "📋 Planificación Global",
         "⚡ Análisis de Series",
         "📈 Volumen del Club",
+        "📅 Historial",
         "👤 Configuración"
     ])
 else:
-    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
+    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([
         "🏠 Inicio",
         "💬 Entrenador IA (Chat)",
         "📋 Plan Entrenador",
         "⚡ Análisis de Series",
         "📈 Volumen y Carga Semanal",
+        "📅 Historial",
         "👤 Personal"
     ])
 
@@ -1877,156 +1879,330 @@ with tab_volumen:
 
 # ==================== COMPONENTE: HISTORIAL Y FICHA DETALLADA ====================
 def render_historial_sesiones():
-    st.subheader("📋 Historial y Ficha Detallada de Entrenamiento")
+    st.subheader("📅 Historial de Días y Desglose de Ritmos")
+    st.caption("Consulta día a día tus entrenamientos desde hoy hacia atrás. Compara las vueltas manuales del reloj con los parciales kilómetro a kilómetro de Strava.")
 
-    entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC", (usuario_id,))
+    # Si es entrenador, permitir consultar a cualquier atleta; si es atleta, usar el perfil activo
+    target_uid = usuario_id
+    if es_entrenador:
+        lista_atlet = database.obtener_usuarios(filtro_rol="atleta")
+        if lista_atlet:
+            nom_map = {f"{a['nombre']} ({a['alias']})": a["id"] for a in lista_atlet}
+            nom_sel = st.selectbox("Seleccionar atleta para consultar su historial:", list(nom_map.keys()), index=0)
+            target_uid = nom_map[nom_sel]
 
-    if entrenos_raw:
-        df_entrenos = pd.DataFrame(entrenos_raw)
+    entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC", (target_uid,))
 
-        # Buscador y selector de sesión para ver su ficha
-        st.markdown("#### 🔍 Inspeccionar Sesión en Detalle")
-        col_filtro1, col_filtro2 = st.columns([1, 2])
-        with col_filtro1:
-            texto_busqueda = st.text_input("Filtrar por texto (ej. 'Santa Pola', 'Maratón', '400m', 'Valencia'):", "")
-        with col_filtro2:
-            opciones_df = df_entrenos
-            if texto_busqueda:
-                opciones_df = df_entrenos[
-                    df_entrenos["titulo"].astype(str).str.contains(texto_busqueda, case=False, na=False) |
-                    df_entrenos["ubicacion"].astype(str).str.contains(texto_busqueda, case=False, na=False)
-                ]
+    if not entrenos_raw:
+        st.info("ℹ️ No hay entrenamientos registrados para este perfil. Sincroniza con Garmin, Coros o Strava para ver tu historial.")
+        return
 
-            lista_opciones = [
-                f"{r['id']} | {r['fecha'][:10]} · {r['titulo']} ({r['distancia_km']} km, {r['tiempo_formateado']})"
-                for _, r in opciones_df.head(100).iterrows()
+    df_entrenos = pd.DataFrame(entrenos_raw)
+
+    # 1. Histórico de días desde hoy hacia atrás
+    st.markdown("#### 📆 Seleccionar Día del Histórico (desde hoy hacia atrás)")
+
+    hoy_date = datetime.now().date()
+    dias_semana_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+    def formatear_opcion_dia(r):
+        f_str = str(r["fecha"])[:10]
+        try:
+            f_obj = datetime.strptime(f_str, "%Y-%m-%d").date()
+            diff_dias = (hoy_date - f_obj).days
+            if diff_dias == 0:
+                prefijo = "🟢 Hoy"
+            elif diff_dias == 1:
+                prefijo = "🟡 Ayer"
+            elif diff_dias < 7:
+                prefijo = f"📅 {dias_semana_es[f_obj.weekday()]} ({f_obj.strftime('%d/%m')})"
+            else:
+                prefijo = f"📅 {f_obj.strftime('%d/%m/%Y')} ({dias_semana_es[f_obj.weekday()]})"
+        except Exception:
+            prefijo = f"📅 {f_str}"
+
+        titulo = r.get("titulo") or "Entrenamiento"
+        dist = f"{r.get('distancia_km', 0.0)} km"
+        tiempo = r.get("tiempo_formateado", "--:--")
+        ritmo = f"{r.get('ritmo_medio_minkm', '--:--')} min/km"
+        return f"{r['id']} | {prefijo} · {titulo} — {dist} en {tiempo} ({ritmo})"
+
+    col_filtro1, col_filtro2 = st.columns([1, 2.5])
+    with col_filtro1:
+        texto_busqueda = st.text_input("🔍 Filtrar sesión (lugar, título o fecha):", "", placeholder="Ej: Alcantarilla, 10k, 2026-11...")
+
+    with col_filtro2:
+        opciones_df = df_entrenos
+        if texto_busqueda:
+            opciones_df = df_entrenos[
+                df_entrenos["titulo"].astype(str).str.contains(texto_busqueda, case=False, na=False) |
+                df_entrenos["ubicacion"].astype(str).str.contains(texto_busqueda, case=False, na=False) |
+                df_entrenos["fecha"].astype(str).str.contains(texto_busqueda, case=False, na=False)
             ]
 
-            if lista_opciones:
-                seleccion_label = st.selectbox("Selecciona un entrenamiento para ver su ficha completa:", lista_opciones)
-                sel_id = int(seleccion_label.split(" | ")[0])
-            else:
-                st.warning("No se encontraron entrenamientos con ese texto.")
-                sel_id = None
+        lista_opciones = [
+            formatear_opcion_dia(r)
+            for _, r in opciones_df.iterrows()
+        ]
 
-        # Mostrar ficha del entrenamiento seleccionado
-        if sel_id:
-            entreno_sel, laps_sel = database.obtener_detalle_entrenamiento(sel_id)
-            if entreno_sel:
-                st.markdown(f"### 🎽 Ficha: **{entreno_sel.get('titulo', 'Entrenamiento')}**")
-                st.caption(f"📅 Fecha: **{entreno_sel.get('fecha')}** | 📍 Ubicación: **{entreno_sel.get('ubicacion') or 'No especificada'}**")
+        if lista_opciones:
+            seleccion_label = st.selectbox("Días con entrenamiento registrados (orden cronológico inverso):", lista_opciones, index=0)
+            sel_id = int(seleccion_label.split(" | ")[0])
+        else:
+            st.warning("No se encontraron entrenamientos que coincidan con la búsqueda.")
+            sel_id = None
 
-                col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-                col_m1.metric("Distancia", f"{entreno_sel.get('distancia_km')} km")
-                col_m2.metric("Tiempo", entreno_sel.get("tiempo_formateado"))
-                col_m3.metric("Ritmo medio", f"{entreno_sel.get('ritmo_medio_minkm')} min/km")
-                col_m4.metric("FC Media / Máx", f"{entreno_sel.get('fc_media') or '-'} / {entreno_sel.get('fc_max') or '-'} ppm")
-                col_m5.metric("Cadencia / Calorías", f"{entreno_sel.get('cadencia_media') or '-'} spm · {entreno_sel.get('calorias') or '-'} kcal")
+    if not sel_id:
+        return
 
-                if laps_sel:
-                    laps_clasificados, resumen_series = database.clasificar_vueltas_sesion(laps_sel)
-                    df_laps_sel = pd.DataFrame(laps_clasificados)
+    # Ficha del entrenamiento seleccionado
+    entreno_sel, laps_sel = database.obtener_detalle_entrenamiento(sel_id)
+    if not entreno_sel:
+        st.warning("No se pudieron cargar los datos de este entrenamiento.")
+        return
 
-                    if resumen_series["num_series"] > 1:
-                        st.markdown(f"#### ⚡ Análisis de Series: **{resumen_series['num_series']} Series de ~{resumen_series['distancia_aprox']}m**")
-                        c_sub1, c_sub2, c_sub3 = st.columns(3)
-                        c_sub1.success(f"🎯 **Series reales:** {resumen_series['num_series']} repeticiones")
-                        c_sub2.info(f"⏱️ **Recuperaciones:** {resumen_series['num_recuperaciones']} pausas de descanso")
-                        c_sub3.caption(f"🏃 **Calentamiento:** {resumen_series['calentamiento_km']} km | **Enfriamiento:** {resumen_series['enfriamiento_km']} km")
-                    else:
-                        st.markdown(f"#### ⚡ Desglose de Vueltas ({len(laps_sel)} tramos)")
+    st.markdown("---")
+    st.markdown(f"### 🎽 **{entreno_sel.get('titulo', 'Entrenamiento')}**")
+    st.caption(f"📅 Fecha: **{entreno_sel.get('fecha')}** | 📍 Ubicación: **{entreno_sel.get('ubicacion') or 'No especificada'}**")
 
-                    # Gráfica de la sesión seleccionada estilo Power BI
-                    col_g1, col_g2 = st.columns([1, 1])
-                    with col_g1:
-                        # Paleta ejecutiva Power BI para los tipos de tramo
-                        color_map = {
-                            "Calentamiento": "#7928CA",
-                            "Recuperación": "#4A5568",
-                            "Enfriamiento": "#F77F00"
-                        }
-                        fig_laps_t = px.bar(
-                            df_laps_sel,
-                            x="lap_numero",
-                            y="distancia_m",
-                            color="tipo_clasificado",
-                            color_discrete_map=color_map,
-                            color_discrete_sequence=["#00B4D8", "#0078D4", "#2EC4B6"]
-                        )
-                        fig_laps_t.update_traces(marker=dict(line=dict(width=0)))
-                        aplicar_estilo_powerbi(
-                            fig_laps_t,
-                            titulo="Perfil de la Sesión",
-                            subtitulo="Metros por tramo (Calentamiento, Series y Descansos)",
-                            x_title="Nº Vuelta",
-                            y_title="Metros"
-                        )
-                        fig_laps_t.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000")))
-                        st.plotly_chart(fig_laps_t, use_container_width=True, theme=None)
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+    col_m1.metric("Distancia", f"{entreno_sel.get('distancia_km')} km")
+    col_m2.metric("Tiempo", entreno_sel.get("tiempo_formateado"))
+    col_m3.metric("Ritmo medio", f"{entreno_sel.get('ritmo_medio_minkm')} min/km")
+    col_m4.metric("FC Media / Máx", f"{entreno_sel.get('fc_media') or '-'} / {entreno_sel.get('fc_max') or '-'} ppm")
+    col_m5.metric("Cadencia / Calorías", f"{entreno_sel.get('cadencia_media') or '-'} spm · {entreno_sel.get('calorias') or '-'} kcal")
 
-                    with col_g2:
-                        # Filtrar solo series para la gráfica de ritmos/tiempos si hay series
-                        df_solo_series = df_laps_sel[df_laps_sel["tipo_clasificado"].str.startswith("Serie")]
-                        df_plot_s = df_solo_series if not df_solo_series.empty else df_laps_sel
-                        fig_laps_s = px.bar(
-                            df_plot_s,
-                            x="tipo_clasificado" if not df_solo_series.empty else "lap_numero",
-                            y="tiempo_s",
-                            color="fc_media",
-                            color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#FF5A5F"]],
-                            text="tiempo_formateado"
-                        )
-                        fig_laps_s.update_traces(
-                            textposition='outside',
-                            textfont=dict(color="#000000", size=11, family="Segoe UI"),
-                            marker=dict(line=dict(width=0))
-                        )
-                        fig_laps_s.update_coloraxes(colorbar_title=dict(text="FC Media", font=dict(color="#000000", size=11)))
-                        aplicar_estilo_powerbi(
-                            fig_laps_s,
-                            titulo="Tiempos de las Series Reales",
-                            subtitulo="Duración exacta por repetición activa (segundos)",
-                            x_title="Serie" if not df_solo_series.empty else "Vuelta",
-                            y_title="Segundos"
-                        )
-                        st.plotly_chart(fig_laps_s, use_container_width=True, theme=None)
-
-                    # Tabla de vueltas
-                    columnas_laps = ["lap_numero", "tipo_clasificado", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]
-                    st.dataframe(
-                        df_laps_sel[columnas_laps].rename(columns={
-                            "lap_numero": "Vuelta #",
-                            "tipo_clasificado": "Tipo de Tramo",
-                            "distancia_m": "Metros",
-                            "tiempo_formateado": "Tiempo",
-                            "ritmo_minkm": "Ritmo",
-                            "fc_media": "FC Media",
-                            "fc_max": "FC Máx"
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.info("Esta sesión no tiene registros de vueltas o series intermedias.")
-
-        st.divider()
-
-        # Tabla general completa abajo
-        st.markdown("#### 📜 Registro General Completo")
-        columnas_mostrar = ["fecha", "titulo", "distancia_km", "tiempo_formateado", "ritmo_medio_minkm", "fc_media", "ubicacion"]
-        st.dataframe(
-            df_entrenos[columnas_mostrar].rename(columns={
-                "fecha": "Fecha",
-                "titulo": "Título",
-                "distancia_km": "Distancia (km)",
-                "tiempo_formateado": "Tiempo",
-                "ritmo_medio_minkm": "Ritmo medio",
-                "fc_media": "FC Media",
-                "ubicacion": "Ubicación"
-            }),
-            use_container_width=True,
-            hide_index=True
+    # JUSTO ENCIMA DE LA TABLA DE TIEMPO: Las dos opciones de vistas
+    st.markdown("#### ⏱️ Desglose de Tiempos")
+    col_v_radio, col_v_help = st.columns([1.8, 1.2])
+    with col_v_radio:
+        vista_seleccionada = st.radio(
+            "Seleccionar vista de tiempos:",
+            ["⏱️ Manual / Laps (Reloj)", "🏃 Strava / Km a Km"],
+            horizontal=True,
+            key=f"vista_historial_sel_{sel_id}"
         )
+    with col_v_help:
+        if vista_seleccionada == "⏱️ Manual / Laps (Reloj)":
+            st.caption("⏱️ **Vista Reloj:** Muestra los parciales y pausas que marcaste con el botón del dispositivo.")
+        else:
+            st.caption("🏃 **Vista Strava:** Muestra los pasos exactos cada 1.000 metros (ideal para ver si mantuviste o mejoraste el ritmo).")
+
+    # CONTENIDO SEGÚN LA VISTA SELECCIONADA
+    if vista_seleccionada == "⏱️ Manual / Laps (Reloj)":
+        if laps_sel:
+            laps_clasificados, resumen_series = database.clasificar_vueltas_sesion(laps_sel)
+            df_laps_sel = pd.DataFrame(laps_clasificados)
+
+            if resumen_series["num_series"] > 1:
+                st.markdown(f"##### ⚡ Resumen de Series: **{resumen_series['num_series']} Series de ~{resumen_series['distancia_aprox']}m**")
+                c_sub1, c_sub2, c_sub3 = st.columns(3)
+                c_sub1.success(f"🎯 **Series activas:** {resumen_series['num_series']} repeticiones")
+                c_sub2.info(f"⏱️ **Recuperaciones:** {resumen_series['num_recuperaciones']} pausas de descanso")
+                c_sub3.caption(f"🏃 **Calentamiento:** {resumen_series['calentamiento_km']} km | **Enfriamiento:** {resumen_series['enfriamiento_km']} km")
+
+            # TABLA DE TIEMPO MANUAL / LAPS
+            columnas_laps = ["lap_numero", "tipo_clasificado", "distancia_m", "tiempo_formateado", "ritmo_minkm", "fc_media", "fc_max"]
+            columnas_presentes = [c for c in columnas_laps if c in df_laps_sel.columns]
+            st.dataframe(
+                df_laps_sel[columnas_presentes].rename(columns={
+                    "lap_numero": "Vuelta #",
+                    "tipo_clasificado": "Tipo de Tramo",
+                    "distancia_m": "Metros",
+                    "tiempo_formateado": "Tiempo",
+                    "ritmo_minkm": "Ritmo (min/km)",
+                    "fc_media": "FC Media",
+                    "fc_max": "FC Máx"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Gráficas estilo Power BI
+            col_g1, col_g2 = st.columns([1, 1])
+            with col_g1:
+                color_map = {
+                    "Calentamiento": "#7928CA",
+                    "Recuperación": "#4A5568",
+                    "Enfriamiento": "#F77F00"
+                }
+                fig_laps_t = px.bar(
+                    df_laps_sel,
+                    x="lap_numero",
+                    y="distancia_m",
+                    color="tipo_clasificado",
+                    color_discrete_map=color_map,
+                    color_discrete_sequence=["#00B4D8", "#0078D4", "#2EC4B6"]
+                )
+                fig_laps_t.update_traces(marker=dict(line=dict(width=0)))
+                aplicar_estilo_powerbi(
+                    fig_laps_t,
+                    titulo="Perfil de la Sesión",
+                    subtitulo="Metros por tramo (Calentamiento, Series y Descansos)",
+                    x_title="Nº Vuelta",
+                    y_title="Metros"
+                )
+                fig_laps_t.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#000000")))
+                st.plotly_chart(fig_laps_t, use_container_width=True, theme=None)
+
+            with col_g2:
+                df_solo_series = df_laps_sel[df_laps_sel["tipo_clasificado"].str.startswith("Serie")]
+                df_plot_s = df_solo_series if not df_solo_series.empty else df_laps_sel
+                fig_laps_s = px.bar(
+                    df_plot_s,
+                    x="tipo_clasificado" if not df_solo_series.empty else "lap_numero",
+                    y="tiempo_s",
+                    color="fc_media" if "fc_media" in df_plot_s.columns and df_plot_s["fc_media"].notna().any() else None,
+                    color_continuous_scale=[[0.0, "#0078D4"], [0.5, "#00B4D8"], [1.0, "#FF5A5F"]] if "fc_media" in df_plot_s.columns and df_plot_s["fc_media"].notna().any() else None,
+                    text="tiempo_formateado"
+                )
+                fig_laps_s.update_traces(
+                    textposition='outside',
+                    textfont=dict(color="#000000", size=11, family="Segoe UI"),
+                    marker=dict(line=dict(width=0))
+                )
+                aplicar_estilo_powerbi(
+                    fig_laps_s,
+                    titulo="Tiempos de Repeticiones Activas",
+                    subtitulo="Duración exacta por vuelta (segundos)",
+                    x_title="Serie / Vuelta",
+                    y_title="Segundos"
+                )
+                st.plotly_chart(fig_laps_s, use_container_width=True, theme=None)
+        else:
+            st.info("ℹ️ Esta sesión no tiene laps o vueltas manuales registradas en el reloj. Puedes cambiar arriba a '🏃 Strava / Km a Km' para ver el desglose kilómetro a kilómetro.")
+
+    else:
+        # VISTA STRAVA / KM A KM
+        splits_km = database.calcular_splits_km(
+            entreno_sel.get("distancia_km", 0.0),
+            entreno_sel.get("tiempo_total_s", 0.0),
+            laps_sel
+        )
+
+        if splits_km:
+            df_splits = pd.DataFrame(splits_km)
+
+            # Tarjetas de análisis táctico de ritmo
+            splits_1k = [s for s in splits_km if s.get("distancia_m", 0) >= 950]
+            if splits_1k:
+                mejor_km = min(splits_1k, key=lambda s: s.get("tiempo_s", 999999))
+                peor_km = max(splits_1k, key=lambda s: s.get("tiempo_s", 0))
+
+                # Análisis de split de carrera (1ª mitad vs 2ª mitad)
+                mitad = len(splits_1k) // 2
+                if mitad >= 2:
+                    t_mitad1 = sum(s["tiempo_s"] for s in splits_1k[:mitad]) / mitad
+                    t_mitad2 = sum(s["tiempo_s"] for s in splits_1k[mitad:mitad * 2]) / mitad
+                    diff_mitad = t_mitad2 - t_mitad1
+                    if diff_mitad <= -2.0:
+                        estrategia_texto = f"🟢 **Split Negativo (De menos a más):** 2ª mitad {abs(diff_mitad):.0f}s/km más rápida. ¡Gran gestión!"
+                    elif abs(diff_mitad) < 2.0:
+                        estrategia_texto = "🔵 **Ritmo Homogéneo:** Paso regular y uniforme en toda la sesión."
+                    else:
+                        estrategia_texto = f"🟠 **Split Positivo (De más a menos):** 2ª mitad +{diff_mitad:.0f}s/km más lenta."
+                else:
+                    estrategia_texto = "📊 Ritmo continuo por kilómetro."
+
+                c_k1, c_k2, c_k3 = st.columns(3)
+                c_k1.success(f"⚡ **Km más rápido:** {mejor_km['etiqueta']} a **{mejor_km['ritmo_minkm']}** min/km")
+                c_k2.info(f"🐢 **Km más lento:** {peor_km['etiqueta']} a **{peor_km['ritmo_minkm']}** min/km")
+                c_k3.caption(estrategia_texto)
+
+            # Formatear la diferencia con el ritmo medio
+            def fmt_desv(d_seg):
+                if abs(d_seg) < 1.0:
+                    return "🎯 En ritmo medio"
+                elif d_seg < 0:
+                    return f"🚀 {abs(d_seg):.0f}s más rápido"
+                else:
+                    return f"🐢 +{d_seg:.0f}s más lento"
+
+            df_splits["vs_media"] = df_splits["desviacion_ritmo_s"].apply(fmt_desv)
+
+            # TABLA DE TIEMPO STRAVA / KM A KM
+            cols_splits = ["etiqueta", "distancia_m", "tiempo_formateado", "ritmo_minkm", "vs_media", "fc_media", "fc_max", "cadencia"]
+            cols_existentes = [c for c in cols_splits if c in df_splits.columns]
+            st.dataframe(
+                df_splits[cols_existentes].rename(columns={
+                    "etiqueta": "Kilómetro",
+                    "distancia_m": "Metros",
+                    "tiempo_formateado": "Tiempo",
+                    "ritmo_minkm": "Ritmo (min/km)",
+                    "vs_media": "vs. Ritmo Medio",
+                    "fc_media": "FC Media (ppm)",
+                    "fc_max": "FC Máx (ppm)",
+                    "cadencia": "Cadencia (spm)"
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Gráfica de Ritmo Km a Km estilo Strava
+            df_splits["color_barra"] = df_splits["desviacion_ritmo_s"].apply(
+                lambda x: "#2EC4B6" if x <= 0 else "#FF5A5F"
+            )
+
+            fig_strava = px.bar(
+                df_splits,
+                x="etiqueta",
+                y="tiempo_s",
+                text="ritmo_minkm",
+                color="color_barra",
+                color_discrete_map="identity"
+            )
+            fig_strava.update_traces(
+                textposition='outside',
+                textfont=dict(color="#000000", size=11, family="Segoe UI"),
+                marker=dict(line=dict(width=0))
+            )
+
+            # Añadir línea de ritmo medio
+            ritmo_medio_seg = (entreno_sel.get("tiempo_total_s", 0) / (entreno_sel.get("distancia_km", 1) or 1)) if entreno_sel.get("distancia_km", 0) > 0 else 0
+            if ritmo_medio_seg > 0:
+                fig_strava.add_hline(
+                    y=ritmo_medio_seg,
+                    line_dash="dash",
+                    line_color="#0078D4",
+                    annotation_text=f"Ritmo medio: {entreno_sel.get('ritmo_medio_minkm', '')} min/km",
+                    annotation_position="top right",
+                    annotation_font=dict(color="#0078D4", size=11)
+                )
+
+            aplicar_estilo_powerbi(
+                fig_strava,
+                titulo="Evolución de Ritmo Kilómetro a Kilómetro (Estilo Strava)",
+                subtitulo="Verde: más rápido que la media | Coral: más lento que la media",
+                x_title="Kilómetro",
+                y_title="Segundos por Km",
+                altura=360
+            )
+            st.plotly_chart(fig_strava, use_container_width=True, theme=None)
+        else:
+            st.info("ℹ️ No hay suficientes datos para generar el desglose por kilómetro.")
+
+    st.divider()
+
+    # Tabla general completa abajo
+    st.markdown("#### 📜 Registro General Completo")
+    columnas_mostrar = ["fecha", "titulo", "distancia_km", "tiempo_formateado", "ritmo_medio_minkm", "fc_media", "ubicacion"]
+    st.dataframe(
+        df_entrenos[columnas_mostrar].rename(columns={
+            "fecha": "Fecha",
+            "titulo": "Título",
+            "distancia_km": "Distancia (km)",
+            "tiempo_formateado": "Tiempo",
+            "ritmo_medio_minkm": "Ritmo medio",
+            "fc_media": "FC Media",
+            "ubicacion": "Ubicación"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+# ==================== PESTAÑA: HISTORIAL ====================
+with tab_historial:
+    render_historial_sesiones()
 
 # ==================== PESTAÑA 5: ANÁLISIS DE SERIES ====================
 with tab_series:
