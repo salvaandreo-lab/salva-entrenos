@@ -168,8 +168,8 @@ def parsear_actividad_strava(act: Dict[str, Any], laps: List[Dict[str, Any]] = N
 
     return datos_entreno, laps_resultado
 
-def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50) -> Dict[str, Any]:
-    """Descarga e importa actividades desde la API de Strava."""
+def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50, usuario_id: int = 1) -> Dict[str, Any]:
+    """Descarga e importa actividades desde la API de Strava para un atleta específico."""
     token_info = obtener_tokens_strava()
     if not token_info or not token_info.get("access_token"):
         return {"status": "error", "mensaje": "No hay ningún token o sesión activa de Strava.", "nuevos": 0}
@@ -191,7 +191,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
         if e.code == 401 and token_info.get("refresh_token") and token_info.get("client_id"):
             exito, _, new_info = refrescar_token_strava(token_info["client_id"], token_info["client_secret"], token_info["refresh_token"])
             if exito:
-                return sincronizar_actividades_strava(progreso_callback, max_actividades)
+                return sincronizar_actividades_strava(progreso_callback, max_actividades, usuario_id=usuario_id)
         return {"status": "error", "mensaje": f"Error de autenticación Strava (HTTP {e.code}).", "nuevos": 0}
     except Exception as e:
         return {"status": "error", "mensaje": f"Error de conexión con Strava: {e}", "nuevos": 0}
@@ -211,7 +211,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
 
     for idx, act in enumerate(actividades):
         act_id = str(act.get("id"))
-        fit_hash = f"strava_{act_id}"
+        fit_hash = f"strava_u{usuario_id}_{act_id}"
         nombre = act.get("name", "Actividad")
 
         if progreso_callback:
@@ -232,7 +232,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
             pass
 
         datos_entreno, laps_entreno = parsear_actividad_strava(act, laps)
-        nid = database.guardar_entrenamiento(datos_entreno, laps_entreno)
+        nid = database.guardar_entrenamiento(datos_entreno, laps_entreno, usuario_id=usuario_id)
         if nid:
             nuevos += 1
             hashes_existentes.add(fit_hash)
