@@ -409,6 +409,7 @@ if st.session_state["usuario_id_activo"] not in ids_validos:
 usuario_activo = next((u for u in usuarios_db if u["id"] == st.session_state["usuario_id_activo"]), usuarios_db[0])
 es_entrenador = (usuario_activo.get("rol") == "entrenador")
 usuario_id = usuario_activo["id"]
+es_salva = (usuario_id == 1 or usuario_activo.get("alias") == "salva")
 
 # ==================== BARRA LATERAL (SIDEBAR): SELECTOR DE PERFIL ====================
 with st.sidebar:
@@ -433,24 +434,25 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Alta rápida de compañero / atleta
-    with st.expander("➕ Añadir compañero / atleta", expanded=False):
-        n_nombre = st.text_input("Nombre y Apellidos:", placeholder="Ej: Pedro Martínez", key="nuevo_atleta_nombre")
-        n_alias = st.text_input("Alias (corto):", placeholder="pedro", key="nuevo_atleta_alias")
-        n_avatar = st.text_input("Iniciales Avatar (2 letras):", placeholder="PM", max_chars=3, key="nuevo_atleta_avatar")
-        if st.button("Guardar Atleta", use_container_width=True, key="btn_guardar_nuevo_atleta"):
-            if n_nombre and n_alias:
-                database.crear_o_actualizar_usuario(
-                    nombre=n_nombre.strip(),
-                    alias=n_alias.lower().strip(),
-                    rol="atleta",
-                    entrenador_id=2,
-                    avatar=n_avatar.upper().strip() if n_avatar else "🏃"
-                )
-                st.success(f"Atleta '{n_nombre}' registrado.")
-                st.rerun()
-            else:
-                st.warning("Introduce al menos nombre y alias.")
+    # Alta rápida de compañero / atleta (Exclusivo para Salva)
+    if es_salva:
+        with st.expander("➕ Añadir compañero / atleta", expanded=False):
+            n_nombre = st.text_input("Nombre y Apellidos:", placeholder="Ej: Pedro Martínez", key="nuevo_atleta_nombre")
+            n_alias = st.text_input("Alias (corto):", placeholder="pedro", key="nuevo_atleta_alias")
+            n_avatar = st.text_input("Iniciales Avatar (2 letras):", placeholder="PM", max_chars=3, key="nuevo_atleta_avatar")
+            if st.button("Guardar Atleta", use_container_width=True, key="btn_guardar_nuevo_atleta"):
+                if n_nombre and n_alias:
+                    database.crear_o_actualizar_usuario(
+                        nombre=n_nombre.strip(),
+                        alias=n_alias.lower().strip(),
+                        rol="atleta",
+                        entrenador_id=2,
+                        avatar=n_avatar.upper().strip() if n_avatar else "🏃"
+                    )
+                    st.success(f"Atleta '{n_nombre}' registrado.")
+                    st.rerun()
+                else:
+                    st.warning("Introduce al menos nombre y alias.")
 
 # Encabezado SportTracks AI con icono e insignia oficial Team Ardil
 ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
@@ -2374,31 +2376,34 @@ def render_gestion_atletas():
                         st.success(f"Plan de {at['nombre']} actualizado.")
                         st.rerun()
 
-    st.markdown("#### ➕ Registrar Nuevo Atleta en el Club")
-    with st.form("form_nuevo_atleta_gest"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            n_nom = st.text_input("Nombre y Apellidos:")
-        with c2:
-            n_ali = st.text_input("Alias único:")
-        with c3:
-            n_ava = st.text_input("Iniciales Avatar (2 letras):", max_chars=3)
-        n_url = st.text_input("URL Google Doc de su plan (opcional):")
-        submit_atleta = st.form_submit_button("Dar de Alta Atleta", type="primary")
-        if submit_atleta:
-            if n_nom and n_ali:
-                database.crear_o_actualizar_usuario(
-                    nombre=n_nom.strip(),
-                    alias=n_ali.lower().strip(),
-                    rol="atleta",
-                    entrenador_id=2,
-                    avatar=n_ava.upper().strip() if n_ava else "🏃",
-                    doc_plan_url=n_url.strip() if n_url else None
-                )
-                st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
-                st.rerun()
-            else:
-                st.warning("Introduce nombre y alias.")
+    if es_salva:
+        st.markdown("#### ➕ Registrar Nuevo Atleta en el Club")
+        with st.form("form_nuevo_atleta_gest"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                n_nom = st.text_input("Nombre y Apellidos:")
+            with c2:
+                n_ali = st.text_input("Alias único:")
+            with c3:
+                n_ava = st.text_input("Iniciales Avatar (2 letras):", max_chars=3)
+            n_url = st.text_input("URL Google Doc de su plan (opcional):")
+            submit_atleta = st.form_submit_button("Dar de Alta Atleta", type="primary")
+            if submit_atleta:
+                if n_nom and n_ali:
+                    database.crear_o_actualizar_usuario(
+                        nombre=n_nom.strip(),
+                        alias=n_ali.lower().strip(),
+                        rol="atleta",
+                        entrenador_id=2,
+                        avatar=n_ava.upper().strip() if n_ava else "🏃",
+                        doc_plan_url=n_url.strip() if n_url else None
+                    )
+                    st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
+                    st.rerun()
+                else:
+                    st.warning("Introduce nombre y alias.")
+    else:
+        st.caption("🔒 El registro de nuevos atletas está reservado exclusivamente para la cuenta de Salva.")
 
 # ==================== PESTAÑA 6: PERSONAL (DESPLEGABLE) ====================
 with tab_personal:
