@@ -3,7 +3,7 @@ name: Sincronización Automática Diaria de Entrenamientos
 on:
   schedule:
     # 20:00 UTC = 21:00 CET (Hora oficial de España peninsular)
-    - cron: '0 20 * * *'
+    - cron: '5 20 * * *'
   workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub cuando quieras
 
 jobs:
