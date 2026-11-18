@@ -1983,6 +1983,10 @@ def calcular_splits_km(distancia_km: float, tiempo_total_s: float, laps: Optiona
     return splits
 
 database.calcular_splits_km = calcular_splits_km
+if not hasattr(database, "obtener_splits_km"):
+    database.obtener_splits_km = lambda *args, **kwargs: []
+if not hasattr(database, "guardar_splits_km"):
+    database.guardar_splits_km = lambda *args, **kwargs: None
 
 def render_historial_sesiones():
     st.subheader("📅 Historial de Días y Desglose de Ritmos")
@@ -2180,17 +2184,45 @@ def render_historial_sesiones():
 
     else:
         # VISTA STRAVA / KM A KM
-        splits_km = calcular_splits_km(
-            entreno_sel.get("distancia_km", 0.0),
-            entreno_sel.get("tiempo_total_s", 0.0),
-            laps_sel
-        )
+        # 1. Recuperar parciales métricos reales guardados en base de datos
+        splits_km = []
+        try:
+            if hasattr(database, "obtener_splits_km"):
+                splits_km = database.obtener_splits_km(sel_id)
+        except Exception:
+            splits_km = []
+
+        # 2. Si no están en DB y es actividad Garmin, calcular al vuelo con la traza continua
+        if not splits_km and entreno_sel.get("fit_hash", "").startswith("garmin_"):
+            try:
+                base_act_id = entreno_sel.get("fit_hash").split("_")[-1]
+                from garmin_sync import conectar_garmin, calcular_splits_desde_detalles_garmin
+                tok_file = os.path.join(os.path.dirname(__file__), ".garmin_tokens", "garmin_tokens.json")
+                client_g, _ = conectar_garmin("", "", tok_file)
+                if client_g:
+                    splits_km = calcular_splits_desde_detalles_garmin(
+                        client_g, base_act_id,
+                        duracion_total_s=entreno_sel.get("tiempo_total_s", 0),
+                        distancia_total_km=entreno_sel.get("distancia_km", 0.0)
+                    )
+                    if splits_km and hasattr(database, "guardar_splits_km"):
+                        database.guardar_splits_km(sel_id, splits_km)
+            except Exception:
+                pass
+
+        # 3. Fallback algorítmico si no hay splits reales disponibles
+        if not splits_km:
+            splits_km = calcular_splits_km(
+                entreno_sel.get("distancia_km", 0.0),
+                entreno_sel.get("tiempo_total_s", 0.0),
+                laps_sel
+            )
 
         if splits_km:
             df_splits = pd.DataFrame(splits_km)
 
             # Tarjetas de análisis táctico de ritmo
-            splits_1k = [s for s in splits_km if s.get("distancia_m", 0) >= 950]
+            splits_1k = [s for s in splits_km if s.get("distancia_m", 0) >= 800]
             if splits_1k:
                 mejor_km = min(splits_1k, key=lambda s: s.get("tiempo_s", 999999))
                 peor_km = max(splits_1k, key=lambda s: s.get("tiempo_s", 0))
@@ -2215,9 +2247,19 @@ def render_historial_sesiones():
                 c_k2.info(f"🐢 **Km más lento:** {peor_km['etiqueta']} a **{peor_km['ritmo_minkm']}** min/km")
                 c_k3.caption(estrategia_texto)
 
+            # Ritmo medio general para desviaciones
+            ritmo_medio_seg = (entreno_sel.get("tiempo_total_s", 0) / (entreno_sel.get("distancia_km", 1) or 1)) if entreno_sel.get("distancia_km", 0) > 0 else 0
+
+            # Asegurar columna desviacion_ritmo_s
+            if "desviacion_ritmo_s" not in df_splits.columns or df_splits["desviacion_ritmo_s"].isna().all():
+                df_splits["desviacion_ritmo_s"] = df_splits.apply(
+                    lambda r: (r["tiempo_s"] / (r["distancia_m"] / 1000.0)) - ritmo_medio_seg if r.get("distancia_m", 0) > 0 and ritmo_medio_seg > 0 else 0.0,
+                    axis=1
+                )
+
             # Formatear la diferencia con el ritmo medio
             def fmt_desv(d_seg):
-                if abs(d_seg) < 1.0:
+                if pd.isna(d_seg) or abs(d_seg) < 1.0:
                     return "🎯 En ritmo medio"
                 elif d_seg < 0:
                     return f"🚀 {abs(d_seg):.0f}s más rápido"
@@ -2226,8 +2268,16 @@ def render_historial_sesiones():
 
             df_splits["vs_media"] = df_splits["desviacion_ritmo_s"].apply(fmt_desv)
 
+            # Formatear Desnivel (+/- m, como en Strava)
+            if "desnivel_m" in df_splits.columns and df_splits["desnivel_m"].notna().any():
+                df_splits["desnivel_str"] = df_splits["desnivel_m"].apply(
+                    lambda d: f"{d:+.0f} m" if pd.notna(d) and abs(d) >= 0.5 else ("0 m" if pd.notna(d) else "-")
+                )
+            else:
+                df_splits["desnivel_str"] = "-"
+
             # TABLA DE TIEMPO STRAVA / KM A KM
-            cols_splits = ["etiqueta", "distancia_m", "tiempo_formateado", "ritmo_minkm", "vs_media", "fc_media", "fc_max", "cadencia"]
+            cols_splits = ["etiqueta", "distancia_m", "tiempo_formateado", "ritmo_minkm", "vs_media", "desnivel_str", "fc_media", "fc_max", "cadencia"]
             cols_existentes = [c for c in cols_splits if c in df_splits.columns]
             st.dataframe(
                 df_splits[cols_existentes].rename(columns={
@@ -2236,6 +2286,7 @@ def render_historial_sesiones():
                     "tiempo_formateado": "Tiempo",
                     "ritmo_minkm": "Ritmo (min/km)",
                     "vs_media": "vs. Ritmo Medio",
+                    "desnivel_str": "Desnivel",
                     "fc_media": "FC Media (ppm)",
                     "fc_max": "FC Máx (ppm)",
                     "cadencia": "Cadencia (spm)"
