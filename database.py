@@ -80,7 +80,28 @@ def init_db():
     )
     """)
 
-    # 4. Usuarios iniciales del Team Ardil si la tabla está vacía
+    # 4. Tabla de parciales métricos kilómetro a kilómetro (estilo Strava)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS entrenamientos_splits_km (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entrenamiento_id INTEGER NOT NULL,
+        km_numero INTEGER NOT NULL,
+        etiqueta TEXT NOT NULL,
+        distancia_m REAL NOT NULL,
+        tiempo_s REAL NOT NULL,
+        tiempo_formateado TEXT NOT NULL,
+        ritmo_minkm TEXT NOT NULL,
+        desnivel_m REAL DEFAULT 0.0,
+        desviacion_ritmo_s REAL DEFAULT 0.0,
+        fc_media INTEGER,
+        fc_max INTEGER,
+        cadencia INTEGER,
+        FOREIGN KEY (entrenamiento_id) REFERENCES entrenamientos(id) ON DELETE CASCADE
+    )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_splits_entrenamiento ON entrenamientos_splits_km(entrenamiento_id)")
+
+    # 5. Usuarios iniciales del Team Ardil si la tabla está vacía
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         usuarios_seed = [
@@ -622,6 +643,59 @@ def calcular_splits_km(distancia_km: float, tiempo_total_s: float, laps: Optiona
         })
 
     return splits
+
+def guardar_splits_km(entrenamiento_id: int, splits: List[Dict[str, Any]]):
+    """Guarda o actualiza los parciales métricos kilómetro a kilómetro en la base de datos."""
+    if not splits:
+        return
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM entrenamientos_splits_km WHERE entrenamiento_id = ?", (entrenamiento_id,))
+        for s in splits:
+            cursor.execute("""
+            INSERT INTO entrenamientos_splits_km (
+                entrenamiento_id, km_numero, etiqueta, distancia_m, tiempo_s,
+                tiempo_formateado, ritmo_minkm, desnivel_m, desviacion_ritmo_s,
+                fc_media, fc_max, cadencia
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                entrenamiento_id,
+                int(s.get("km_numero") or s.get("split_numero") or 1),
+                s.get("etiqueta") or f"Km {s.get('km_numero', 1)}",
+                float(s.get("distancia_m") or 1000.0),
+                float(s.get("tiempo_s") or 0.0),
+                s.get("tiempo_formateado") or "00:00",
+                s.get("ritmo_minkm") or "--:--",
+                float(s.get("desnivel_m") or 0.0),
+                float(s.get("desviacion_ritmo_s") or 0.0),
+                s.get("fc_media"),
+                s.get("fc_max"),
+                s.get("cadencia")
+            ))
+        conn.commit()
+    except Exception as e:
+        print(f"Error al guardar splits km en DB: {e}")
+    finally:
+        conn.close()
+
+def obtener_splits_km(entrenamiento_id: int) -> List[Dict[str, Any]]:
+    """Recupera los parciales métricos reales km a km almacenados para un entrenamiento."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT * FROM entrenamientos_splits_km
+            WHERE entrenamiento_id = ?
+            ORDER BY km_numero ASC
+        """, (entrenamiento_id,))
+        filas = [dict(r) for r in cursor.fetchall()]
+        return filas
+    except Exception as e:
+        print(f"Error al obtener splits km de DB: {e}")
+        return []
+    finally:
+        conn.close()
 
 def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any]:
     """Obtiene el estado general de todos los atletas asignados a un entrenador."""
