@@ -122,11 +122,23 @@ def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int =
     if not doc_id:
         raise ValueError("No se pudo extraer el ID del documento de Google Docs.")
 
+    cache_file = os.path.join(os.path.dirname(__file__), f".cache_plan_{doc_id}.json")
+
     export_url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
     req = urllib.request.Request(export_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        html_content = resp.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            html_content = resp.read().decode("utf-8")
+    except Exception as e:
+        # Si falla la descarga en vivo (timeout de red, sin conexión), recuperar del caché local si existe
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        raise e
 
     parser = GoogleDocTableParser()
     parser.feed(html_content)
@@ -174,6 +186,13 @@ def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int =
                     "es_series": es_series,
                     "es_carrera": es_carrera
                 })
+
+    if plan_dias:
+        try:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(plan_dias, f, ensure_ascii=False)
+        except Exception:
+            pass
 
     return plan_dias
 
