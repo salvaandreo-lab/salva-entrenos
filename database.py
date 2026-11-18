@@ -86,7 +86,8 @@ def init_db():
         usuarios_seed = [
             (1, 'Salva Andreo', 'salva', 'atleta', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
             (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
-            (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None)
+            (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None),
+            (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', None)
         ]
         cursor.executemany("""
         INSERT INTO usuarios (id, nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
@@ -97,6 +98,15 @@ def init_db():
     conn.close()
 
 # ==================== FUNCIONES DE GESTIÓN DE USUARIOS / ATLETAS ====================
+def persistir_base_datos(commit_msg: str = "Actualización de base de datos [skip ci]") -> bool:
+    """Sincroniza sporttracks.db con el repositorio de GitHub para persistencia permanente en Streamlit Cloud."""
+    try:
+        import sync_sporttracks
+        return sync_sporttracks.sync_file("sporttracks.db", commit_msg=commit_msg)
+    except Exception as e:
+        print(f"Aviso de sincronización remota de sporttracks.db: {e}")
+        return False
+
 def obtener_usuarios(filtro_rol: Optional[str] = None) -> List[Dict[str, Any]]:
     """Obtiene la lista de atletas o entrenadores."""
     conn = get_connection()
@@ -120,8 +130,8 @@ def obtener_usuario_por_id(usuario_id: int) -> Optional[Dict[str, Any]]:
 
 def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", entrenador_id: Optional[int] = 2,
                                email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None,
-                               usuario_id: Optional[int] = None) -> int:
-    """Crea un nuevo atleta o actualiza su perfil de forma segura."""
+                               usuario_id: Optional[int] = None, sync_remoto: bool = True) -> int:
+    """Crea un nuevo atleta o actualiza su perfil de forma segura y permanente."""
     conn = get_connection()
     cursor = conn.cursor()
     alias_clean = alias.lower().strip()
@@ -140,6 +150,8 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
         """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_plan_url, usuario_id))
         conn.commit()
         conn.close()
+        if sync_remoto:
+            persistir_base_datos(f"Actualizado atleta '{nombre}' [skip ci]")
         return usuario_id
 
     # Si es alta nueva, prevenir sobrescribir el alias protegido de Salva
@@ -165,7 +177,22 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
     row = cursor.fetchone()
     uid = row[0] if row else cursor.lastrowid
     conn.close()
+    if sync_remoto:
+        persistir_base_datos(f"Alta permanente de atleta '{nombre}' [skip ci]")
     return uid
+
+def eliminar_usuario(usuario_id: int) -> bool:
+    """Elimina un atleta (excepto Salva y el Míster) y sus datos asociados."""
+    if usuario_id in (1, 2):
+        return False
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM entrenamientos WHERE usuario_id = ?", (usuario_id,))
+    cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+    conn.commit()
+    conn.close()
+    persistir_base_datos(f"Eliminado atleta id {usuario_id} [skip ci]")
+    return True
 
 def guardar_entrenamiento(datos_entreno: Dict[str, Any], laps: List[Dict[str, Any]], usuario_id: int = 1) -> Optional[int]:
     """Guarda un entrenamiento completo con sus vueltas/series para un atleta específico."""
