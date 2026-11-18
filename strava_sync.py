@@ -236,6 +236,32 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
         if nid:
             nuevos += 1
             hashes_existentes.add(fit_hash)
+            # Guardar splits métricos si vienen disponibles en Strava
+            splits_metric = act.get("splits_metric")
+            if splits_metric:
+                try:
+                    splits_guardar = []
+                    for s in splits_metric:
+                        s_dist = float(s.get("distance", 1000.0))
+                        s_dur = float(s.get("moving_time") or s.get("elapsed_time") or 0.0)
+                        s_num = int(s.get("split", 1))
+                        pace_str = calcular_ritmo(s_dist, s_dur)
+                        desn = float(s.get("elevation_difference", 0.0))
+                        splits_guardar.append({
+                            "km_numero": s_num,
+                            "etiqueta": f"Km {s_num}" if s_dist >= 800 else f"{s_dist/1000.0:.1f} km",
+                            "distancia_m": s_dist,
+                            "tiempo_s": s_dur,
+                            "tiempo_formateado": segundos_a_formato(s_dur),
+                            "ritmo_minkm": pace_str,
+                            "desnivel_m": desn,
+                            "cadencia": int(s.get("average_cadence") * 2) if s.get("average_cadence") else None,
+                            "fc_media": int(s.get("average_heartrate")) if s.get("average_heartrate") else None
+                        })
+                    if splits_guardar:
+                        database.guardar_splits_km(nid, splits_guardar)
+                except Exception:
+                    pass
 
     token_info["last_sync"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     guardar_tokens_strava(token_info)
