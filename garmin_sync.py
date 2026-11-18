@@ -165,10 +165,11 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
 def descargar_historial_garmin(
     client,
     max_actividades: int = 100,
-    callback_progreso: Optional[Callable[[int, int, str], None]] = None
+    callback_progreso: Optional[Callable[[int, int, str], None]] = None,
+    usuario_id: int = 1
 ) -> Tuple[int, int]:
     """
-    Descarga el historial de Garmin Connect de forma paginada.
+    Descarga el historial de Garmin Connect de forma paginada para un atleta específico.
     Retorna (guardadas_nuevas, total_omitidas_duplicadas).
     """
     batch_size = 50
@@ -200,8 +201,8 @@ def descargar_historial_garmin(
             if callback_progreso:
                 callback_progreso(guardadas + omitidas + 1, total_objetivo, f"{fecha_str[:10]} - {titulo}")
 
-            # Identificador único para evitar duplicar
-            fit_hash = f"garmin_connect_{act_id}"
+            # Identificador único para evitar duplicar por usuario
+            fit_hash = f"garmin_u{usuario_id}_{act_id}"
 
             datos_entreno = {
                 "fecha": fecha_str,
@@ -244,7 +245,7 @@ def descargar_historial_garmin(
                 # Si no tiene splits detallados, se guarda la sesión general
                 pass
 
-            id_creado = database.guardar_entrenamiento(datos_entreno, laps)
+            id_creado = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
             if id_creado:
                 guardadas += 1
             else:
