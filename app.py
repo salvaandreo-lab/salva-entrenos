@@ -280,6 +280,161 @@ div.stButton > button:first-child:hover {{
     background-color: #0066A2 !important;
     color: #FFFFFF !important;
 }}
+
+/* ==================== DESPLEGABLES (SELECTBOX) DESTACADOS ==================== */
+div[data-testid="stSelectbox"] label {{
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+    color: #1E293B !important;
+    margin-bottom: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}}
+
+div[data-baseweb="select"] {{
+    border-radius: 10px !important;
+}}
+
+div[data-baseweb="select"] > div {{
+    background-color: #FFFFFF !important;
+    border: 2px solid #007CC3 !important; /* Borde azul Garmin bien definido */
+    border-radius: 10px !important;
+    box-shadow: 0 2px 6px rgba(0, 124, 195, 0.10) !important;
+    cursor: pointer !important;
+    min-height: 44px !important;
+    transition: all 0.2s ease-in-out !important;
+}}
+
+div[data-baseweb="select"] > div:hover {{
+    border-color: #005A8C !important;
+    background-color: #F8FBFE !important;
+    box-shadow: 0 4px 14px rgba(0, 124, 195, 0.22) !important;
+    transform: translateY(-1px) !important;
+}}
+
+/* Flecha desplegable (chevron) con contenedor tipo botón */
+div[data-baseweb="select"] svg {{
+    fill: #007CC3 !important;
+    color: #007CC3 !important;
+    width: 20px !important;
+    height: 20px !important;
+    stroke: #007CC3 !important;
+    stroke-width: 0.5px !important;
+}}
+
+div[data-baseweb="select"] [aria-hidden="true"] {{
+    background: #E8F4FA !important;
+    border: 1px solid #C4E3F7 !important;
+    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    margin-right: 4px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.2s ease !important;
+}}
+
+div[data-baseweb="select"] > div:hover [aria-hidden="true"] {{
+    background: #D0EAF8 !important;
+    border-color: #007CC3 !important;
+}}
+
+/* Texto seleccionado dentro del desplegable */
+div[data-baseweb="select"] span {{
+    font-weight: 600 !important;
+    color: #0F172A !important;
+    font-size: 13.5px !important;
+}}
+
+/* Menú desplegado (popover con lista de opciones) */
+ul[data-baseweb="menu"] {{
+    border-radius: 10px !important;
+    border: 1.5px solid #007CC3 !important;
+    box-shadow: 0 10px 25px rgba(0, 124, 195, 0.18) !important;
+    background-color: #FFFFFF !important;
+    padding: 6px !important;
+}}
+
+li[data-baseweb="menu-item"] {{
+    border-radius: 6px !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    padding: 9px 14px !important;
+    color: #1E293B !important;
+    transition: all 0.15s ease !important;
+}}
+
+li[data-baseweb="menu-item"]:hover {{
+    background-color: #E8F4FA !important;
+    color: #007CC3 !important;
+    font-weight: 700 !important;
+}}
+
+li[data-baseweb="menu-item"][aria-selected="true"] {{
+    background-color: #007CC3 !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+}}
+
+/* ==================== ACORDEONES DESPLEGABLES (st.expander) ==================== */
+div[data-testid="stExpander"] {{
+    border: 1.5px solid #CBD5E1 !important;
+    border-radius: 10px !important;
+    background-color: #FFFFFF !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+    margin-bottom: 14px !important;
+    overflow: hidden !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}}
+
+div[data-testid="stExpander"]:hover {{
+    border-color: #007CC3 !important;
+    box-shadow: 0 4px 12px rgba(0, 124, 195, 0.12) !important;
+}}
+
+div[data-testid="stExpander"] summary {{
+    background-color: #F8FAFC !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    padding: 12px 18px !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}}
+
+div[data-testid="stExpander"] summary:hover {{
+    background-color: #EFF6FF !important;
+    color: #007CC3 !important;
+}}
+
+div[data-testid="stExpander"] summary svg {{
+    color: #007CC3 !important;
+    fill: #007CC3 !important;
+    width: 20px !important;
+    height: 20px !important;
+}}
+
+/* ==================== SELECTORES TIPO RADIO ==================== */
+div[data-testid="stRadio"] > div[role="radiogroup"] {{
+    background: #FFFFFF !important;
+    padding: 6px 14px !important;
+    border-radius: 10px !important;
+    border: 1.5px solid #CBD5E1 !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.03) !important;
+    gap: 14px !important;
+}}
+
+div[data-testid="stRadio"] label {{
+    cursor: pointer !important;
+    font-weight: 600 !important;
+    color: #1E293B !important;
+    transition: color 0.2s ease !important;
+}}
+
+div[data-testid="stRadio"] label:hover {{
+    color: #007CC3 !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1095,7 +1250,7 @@ def render_tab_home_atleta():
                 for e in ultimos_entrenos
             }
             # Selector compacto para cambiar de actividad
-            sel_nombre = st.selectbox("Seleccionar actividad para visualizar:", list(opciones_entrenos.keys()), index=0)
+            sel_nombre = st.selectbox("🔽 Seleccionar actividad para visualizar:", list(opciones_entrenos.keys()), index=0)
             act_id = opciones_entrenos[sel_nombre]
             act_sel, laps_act = database.obtener_detalle_entrenamiento(act_id)
 
@@ -1546,7 +1701,7 @@ with tab_plan:
             return limpio
 
         semana_sel = st.selectbox(
-            "Seleccionar semana del plan:",
+            "🔽 Seleccionar semana del plan:",
             semanas_disponibles,
             index=def_idx,
             format_func=formatear_semana_label
@@ -1745,7 +1900,7 @@ with tab_volumen:
             ] + meses_unicos
 
             periodo_sel = st.selectbox(
-                "Filtrar período o mes:",
+                "🔽 Filtrar período o mes:",
                 opciones_periodo,
                 index=0
             )
@@ -1998,7 +2153,7 @@ def render_historial_sesiones():
         lista_atlet = database.obtener_usuarios(filtro_rol="atleta")
         if lista_atlet:
             nom_map = {f"{a['nombre']} ({a['alias']})": a["id"] for a in lista_atlet}
-            nom_sel = st.selectbox("Seleccionar atleta para consultar su historial:", list(nom_map.keys()), index=0)
+            nom_sel = st.selectbox("🔽 Seleccionar atleta para consultar su historial:", list(nom_map.keys()), index=0)
             target_uid = nom_map[nom_sel]
 
     entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC", (target_uid,))
@@ -2056,7 +2211,7 @@ def render_historial_sesiones():
         ]
 
         if lista_opciones:
-            seleccion_label = st.selectbox("Días con entrenamiento registrados (orden cronológico inverso):", lista_opciones, index=0)
+            seleccion_label = st.selectbox("🔽 Seleccionar día o entrenamiento:", lista_opciones, index=0)
             sel_id = int(seleccion_label.split(" | ")[0])
         else:
             st.warning("No se encontraron entrenamientos que coincidan con la búsqueda.")
@@ -2380,7 +2535,7 @@ with tab_series:
             "200 mtrs": (170, 230),
         }
         dist_sel = st.selectbox(
-            "Distancia de serie:",
+            "🔽 Seleccionar distancia de serie:",
             list(distancia_opciones.keys()),
             index=3
         )
@@ -2416,7 +2571,7 @@ with tab_series:
                 opciones_sesion.append(f"{s['id']} | {s['fecha'][:10]} · {tit_amigable} ({s['num_series']} series)")
 
             sel_sesion_str = st.selectbox(
-                "Seleccionar sesión de series:",
+                "🔽 Seleccionar sesión concreta de series:",
                 opciones_sesion,
                 index=0
             )
@@ -2925,7 +3080,7 @@ with tab_personal:
             "📥 Sincronizar Strava"
         ]
         opcion_personal = st.selectbox(
-            "Seleccionar sección:",
+            "🔽 Seleccionar sección:",
             opciones_disp,
             index=0
         )
