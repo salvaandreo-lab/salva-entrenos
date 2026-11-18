@@ -162,6 +162,120 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
             raise Exception(f"Se requiere contraseña para iniciar sesión por primera vez con {email}: {e}")
         raise Exception(f"No se pudo conectar a Garmin Connect ({email}): {e}")
 
+def calcular_splits_desde_detalles_garmin(
+    client,
+    act_id: str,
+    duracion_total_s: float = 0.0,
+    distancia_total_km: float = 0.0
+) -> List[Dict[str, Any]]:
+    """
+    Calcula los parciales métricos exactos de 1 km (estilo Strava) a partir de la traza continua
+    de puntos GPS, elevación y tiempo de Garmin Connect.
+    """
+    try:
+        det = client.get_activity_details(act_id)
+        if not det or not det.get("metricDescriptors") or not det.get("activityDetailMetrics"):
+            return []
+
+        desc_map = {d["key"]: d["metricsIndex"] for d in det["metricDescriptors"] if "key" in d and "metricsIndex" in d}
+        dist_idx = desc_map.get("sumDistance")
+        time_idx = desc_map.get("sumMovingDuration") or desc_map.get("sumDuration")
+        elev_idx = desc_map.get("directElevation") or desc_map.get("directCorrectedElevation")
+        cad_idx = desc_map.get("directDoubleCadence") or desc_map.get("directRunCadence")
+
+        if dist_idx is None or time_idx is None:
+            return []
+
+        pts = []
+        for m in det.get("activityDetailMetrics", []):
+            vals = m.get("metrics", [])
+            if len(vals) <= max(dist_idx, time_idx):
+                continue
+            d = vals[dist_idx]
+            t = vals[time_idx]
+            if d is not None and t is not None:
+                e = vals[elev_idx] if elev_idx is not None and elev_idx < len(vals) and vals[elev_idx] is not None else 0.0
+                c = vals[cad_idx] if cad_idx is not None and cad_idx < len(vals) and vals[cad_idx] is not None else 0.0
+                pts.append((float(d), float(t), float(e), float(c)))
+
+        if len(pts) < 5:
+            return []
+
+        def interp_at(target_d):
+            for i in range(1, len(pts)):
+                d0, t0, e0, c0 = pts[i-1]
+                d1, t1, e1, c1 = pts[i]
+                if d0 <= target_d <= d1:
+                    frac = (target_d - d0) / (d1 - d0) if d1 > d0 else 0
+                    return t0 + frac * (t1 - t0), e0 + frac * (e1 - e0), c1
+            return pts[-1][1], pts[-1][2], pts[-1][3]
+
+        max_d = pts[-1][0]
+        if max_d <= 200:
+            return []
+
+        # Ritmo medio para comparar desviaciones
+        ritmo_medio_seg = 0.0
+        if distancia_total_km > 0 and duracion_total_s > 0:
+            ritmo_medio_seg = duracion_total_s / distancia_total_km
+        elif max_d > 0 and pts[-1][1] > 0:
+            ritmo_medio_seg = pts[-1][1] / (max_d / 1000.0)
+
+        prev_d = 0.0
+        prev_t = 0.0
+        prev_e = pts[0][2]
+
+        splits = []
+        km = 1
+        while prev_d < max_d:
+            target_d = min(km * 1000.0, max_d)
+            t, e, cad = interp_at(target_d)
+            split_dist = target_d - prev_d
+            split_time = t - prev_t
+            split_elev = e - prev_e
+
+            if split_dist <= 0:
+                break
+
+            pace_s = split_time / (split_dist / 1000.0)
+            mins = int(pace_s // 60)
+            secs = int(round(pace_s % 60))
+            if secs == 60:
+                mins += 1
+                secs = 0
+            pace_str = f"{mins}:{secs:02d}"
+
+            diff_s = pace_s - ritmo_medio_seg if ritmo_medio_seg > 0 else 0.0
+            label = f"Km {km}" if split_dist >= 800 else f"{split_dist/1000.0:.1f} km"
+            cad_norm = int(round(cad * 2)) if 30 < cad < 110 else int(round(cad)) if cad >= 110 else None
+
+            splits.append({
+                "km_numero": km,
+                "split_numero": km,
+                "etiqueta": label,
+                "distancia_m": round(split_dist, 1),
+                "tiempo_s": round(split_time, 1),
+                "tiempo_formateado": segundos_a_formato(split_time),
+                "ritmo_minkm": pace_str,
+                "desnivel_m": round(split_elev, 1),
+                "desviacion_ritmo_s": round(diff_s, 1),
+                "fc_media": None,
+                "fc_max": None,
+                "cadencia": cad_norm
+            })
+
+            prev_d = target_d
+            prev_t = t
+            prev_e = e
+            if target_d >= max_d:
+                break
+            km += 1
+
+        return splits
+    except Exception as e:
+        print(f"Aviso: No se pudieron calcular splits detallados para Garmin {act_id}: {e}")
+        return []
+
 def descargar_historial_garmin(
     client,
     max_actividades: int = 100,
@@ -248,6 +362,16 @@ def descargar_historial_garmin(
             id_creado = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
             if id_creado:
                 guardadas += 1
+                try:
+                    splits_km = calcular_splits_desde_detalles_garmin(
+                        client, act_id,
+                        duracion_total_s=duracion_s,
+                        distancia_total_km=datos_entreno.get("distancia_km", 0.0)
+                    )
+                    if splits_km:
+                        database.guardar_splits_km(id_creado, splits_km)
+                except Exception as e_spl:
+                    print(f"Aviso al guardar splits km de Garmin ({act_id}): {e_spl}")
             else:
                 omitidas += 1
 
