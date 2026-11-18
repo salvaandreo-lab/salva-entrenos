@@ -497,10 +497,12 @@ total_km = stats.get("total_km", 0)
 total_entrenos = stats.get("total_entrenos", 0)
 media_km = round(total_km / max(1, total_entrenos), 1)
 
-doc_url = usuario_activo.get("doc_plan_url") or plan_entrenador.obtener_doc_url()
+doc_url = usuario_activo.get("doc_plan_url")
 
 @st.cache_data(ttl=120)
 def cargar_plan_y_comparativa(url_doc, u_id=1):
+    if not url_doc:
+        return [], {"comparativa": [], "preguntas_discrepancias": []}
     try:
         p_dias = plan_entrenador.descargar_plan_entrenador(url_doc)
         reconc = plan_entrenador.conciliar_plan_con_garmin(p_dias, usuario_id=u_id)
@@ -859,24 +861,26 @@ def render_tab_home_atleta():
         tit_series = p_match_s[0]["titulo_sugerido"] if p_match_s else f"Series {len(laps_s_solo)}x{s_resumen.get('distancia_aprox', 1000)}m"
         f_series = ult_sesion_series[0]["fecha"][:10]
         ub_series = ult_sesion_series[0].get("ubicacion") or "Alcantarilla"
-        n_series = len(laps_s_solo) if laps_s_solo else s_resumen.get("num_series", 8)
+        n_series = len(laps_s_solo) if laps_s_solo else s_resumen.get("num_series", 0)
         
         if laps_s_solo:
             t_laps = [l["tiempo_s"] for l in laps_s_solo if l.get("tiempo_s")]
-            mejor_t_s = min(t_laps) if t_laps else 206
-            media_t_s = sum(t_laps) / len(t_laps) if t_laps else 213
+            mejor_t_s = min(t_laps) if t_laps else 0
+            media_t_s = sum(t_laps) / len(t_laps) if t_laps else 0
             mejor_serie_str = f"{int(mejor_t_s // 60)}:{int(mejor_t_s % 60):02d}"
             media_serie_str = f"{int(media_t_s // 60)}:{int(media_t_s % 60):02d}"
         else:
-            mejor_serie_str = "3:26"
-            media_serie_str = "3:33"
+            mejor_serie_str = "--:--"
+            media_serie_str = "--:--"
+        hay_series = True
     else:
-        tit_series = "Series 8x1000 (Rec 1')"
-        f_series = "2026-11-10"
-        ub_series = "Alcantarilla"
-        n_series = 8
-        mejor_serie_str = "3:26"
-        media_serie_str = "3:33"
+        hay_series = False
+        tit_series = "Sin series registradas"
+        f_series = "--"
+        ub_series = ""
+        n_series = 0
+        mejor_serie_str = "--:--"
+        media_serie_str = "--:--"
 
     # 1. "Lo esencial" (3 tarjetas destacadas) con botón de Sincronizar directo
     c_hdr_es, c_hdr_sync = st.columns([4.2, 1.3])
@@ -900,91 +904,155 @@ def render_tab_home_atleta():
     c_es1, c_es2, c_es3 = st.columns(3)
     
     with c_es1:
-        st.markdown(f"""
-        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🏃 Último Entreno</span>
-                <span class="garmin-badge-green">Completado</span>
-            </div>
-            <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                {tit_ult}
-            </div>
-            <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_ult} · {ub_ult}</div>
-            <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
-                <span style="font-size: 32px; font-weight: 800; color: #007CC3; line-height: 1;">{km_ult}</span>
-                <span style="font-size: 14px; font-weight: 700; color: #64748B;">km</span>
-                <span style="font-size: 12px; color: #64748B; margin-left: 6px;">⏱️ {t_ult}</span>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Ritmo Medio</div>
-                    <div style="font-size: 15px; font-weight: 800; color: #181C20;">{r_ult} <span style="font-size: 10px; font-weight: normal; color: #64748B;">/km</span></div>
+        if ultimo_entreno_raw:
+            st.markdown(f"""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🏃 Último Entreno</span>
+                    <span class="garmin-badge-green">Completado</span>
                 </div>
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">🔥 Calorías</div>
-                    <div style="font-size: 15px; font-weight: 800; color: #181C20;">{cal_ult} <span style="font-size: 10px; font-weight: normal; color: #64748B;">kcal</span></div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {tit_ult}
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_ult} · {ub_ult}</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: #007CC3; line-height: 1;">{km_ult}</span>
+                    <span style="font-size: 14px; font-weight: 700; color: #64748B;">km</span>
+                    <span style="font-size: 12px; color: #64748B; margin-left: 6px;">⏱️ {t_ult}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Ritmo Medio</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{r_ult} <span style="font-size: 10px; font-weight: normal; color: #64748B;">/km</span></div>
+                    </div>
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">🔥 Calorías</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{cal_ult} <span style="font-size: 10px; font-weight: normal; color: #64748B;">kcal</span></div>
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🏃 Último Entreno</span>
+                    <span class="garmin-badge-gray">Sin actividades</span>
+                </div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px;">
+                    Sin registros todavía
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">Conecta tu reloj en Personal</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: #94A3B8; line-height: 1;">0.00</span>
+                    <span style="font-size: 14px; font-weight: 700; color: #64748B;">km</span>
+                    <span style="font-size: 12px; color: #64748B; margin-left: 6px;">⏱️ --:--</span>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 12px; color: #64748B;">
+                    Sincroniza Garmin, Coros o Strava para ver tus ritmos.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
     with c_es2:
-        st.markdown(f"""
-        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🎯 Próxima Competición</span>
-                <span class="{badge_cls_comp}">{badge_comp}</span>
-            </div>
-            {sub_aviso_comp}
-            <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                {tit_comp}
-            </div>
-            <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_comp} · {tipo_comp}</div>
-            <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
-                <span style="font-size: 32px; font-weight: 800; color: {color_metrica_comp}; line-height: 1;">{dist_comp}</span>
-                <span style="font-size: 13px; font-weight: 700; color: #64748B; margin-left: 4px;">({dias_comp_txt})</span>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; {bg_grid_comp} padding: 10px 12px; border-radius: 8px;">
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col1_lbl}</div>
-                    <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col1_val}</div>
+        if hay_competicion or (not hay_competicion and domingos_futuros):
+            st.markdown(f"""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🎯 Próxima Competición</span>
+                    <span class="{badge_cls_comp}">{badge_comp}</span>
                 </div>
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col2_lbl}</div>
-                    <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col2_val}</div>
+                {sub_aviso_comp}
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {tit_comp}
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_comp} · {tipo_comp}</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: {color_metrica_comp}; line-height: 1;">{dist_comp}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #64748B; margin-left: 4px;">({dias_comp_txt})</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; {bg_grid_comp} padding: 10px 12px; border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col1_lbl}</div>
+                        <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col1_val}</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: {color_grid_title}; text-transform: uppercase;">{grid_col2_lbl}</div>
+                        <div style="font-size: 14px; font-weight: 800; color: {color_grid_val};">{grid_col2_val}</div>
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">🎯 Próxima Competición</span>
+                    <span class="garmin-badge-gray">Sin plan</span>
+                </div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px;">
+                    Sin objetivo en el plan
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">Planificación independiente</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: #94A3B8; line-height: 1;">--</span>
+                    <span style="font-size: 13px; font-weight: 700; color: #64748B; margin-left: 4px;">(Sin asignar)</span>
+                </div>
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 10px 12px; border-radius: 8px; font-size: 12px; color: #64748B;">
+                    Asigna tu Google Doc en Personal para ver tu calendario.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
     with c_es3:
-        st.markdown(f"""
-        <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Último Día de Series</span>
-                <span class="garmin-badge-blue">{n_series} series</span>
-            </div>
-            <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                {tit_series}
-            </div>
-            <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_series} · {ub_series}</div>
-            <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
-                <span style="font-size: 32px; font-weight: 800; color: #007CC3; line-height: 1;">{mejor_serie_str}</span>
-                <span style="font-size: 14px; font-weight: 700; color: #64748B;">min</span>
-                <span style="font-size: 12px; color: #64748B; margin-left: 6px;">(Mejor Serie)</span>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Media Series</div>
-                    <div style="font-size: 15px; font-weight: 800; color: #181C20;">{media_serie_str} <span style="font-size: 10px; font-weight: normal; color: #64748B;">min</span></div>
+        if hay_series:
+            st.markdown(f"""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Último Día de Series</span>
+                    <span class="garmin-badge-blue">{n_series} series</span>
                 </div>
-                <div>
-                    <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⏱️ Recuperación</div>
-                    <div style="font-size: 15px; font-weight: 800; color: #181C20;">1' <span style="font-size: 10px; font-weight: normal; color: #64748B;">pausa</span></div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {tit_series}
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">{f_series} · {ub_series}</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: #007CC3; line-height: 1;">{mejor_serie_str}</span>
+                    <span style="font-size: 14px; font-weight: 700; color: #64748B;">min</span>
+                    <span style="font-size: 12px; color: #64748B; margin-left: 6px;">(Mejor Serie)</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Media Series</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{media_serie_str} <span style="font-size: 10px; font-weight: normal; color: #64748B;">min</span></div>
+                    </div>
+                    <div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⏱️ Recuperación</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">1' <span style="font-size: 10px; font-weight: normal; color: #64748B;">pausa</span></div>
+                    </div>
                 </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Último Día de Series</span>
+                    <span class="garmin-badge-gray">Sin series</span>
+                </div>
+                <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px;">
+                    Sin series registradas
+                </div>
+                <div style="font-size: 11px; color: #64748B; margin-bottom: 10px;">Entrenamiento interválico</div>
+                <div style="display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px;">
+                    <span style="font-size: 32px; font-weight: 800; color: #94A3B8; line-height: 1;">--:--</span>
+                    <span style="font-size: 14px; font-weight: 700; color: #64748B;">min</span>
+                </div>
+                <div style="background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0; font-size: 12px; color: #64748B;">
+                    No hay sesiones de series registradas para este atleta.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # 2. "En primer plano" (In Focus)
     st.markdown("<div style='margin-top: 10px; margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px;'>🎯 En Primer Plano</div>", unsafe_allow_html=True)
@@ -1043,8 +1111,22 @@ def render_tab_home_atleta():
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-
-
+        else:
+            st.markdown("""
+            <div class="garmin-card">
+                <div class="garmin-card-header">
+                    <div class="garmin-card-title">
+                        <span style="font-size: 18px;">🏃</span> ACTIVIDAD RECIENTE
+                    </div>
+                    <span class="garmin-badge-gray">Sin actividades</span>
+                </div>
+                <div style="padding: 24px 12px; text-align: center; color: #64748B;">
+                    <div style="font-size: 28px; margin-bottom: 8px;">⏳</div>
+                    <div style="font-size: 15px; font-weight: 700; color: #181C20; margin-bottom: 4px;">Aún no hay entrenamientos registrados</div>
+                    <div style="font-size: 12px;">Sincroniza tus sesiones de Garmin, Coros o Strava desde la pestaña <b>Personal</b>.</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     with col_focus_right:
         # Tarjeta Plan de Entrenamiento · Esta Semana (Google Docs)
@@ -1084,23 +1166,32 @@ def render_tab_home_atleta():
             </div>
         """, unsafe_allow_html=True)
 
-        for d in dias_esta_sem:
-            g = d.get("garmin_entreno")
-            badge_cls = "garmin-badge-green" if "Cumplido" in d.get("estado", "") else ("garmin-badge-gray" if d.get("es_descanso") else "garmin-badge-orange")
-            garmin_txt = f"🏃 {g['distancia_km']} km | {g['tiempo_formateado']} | {g['ritmo_medio_minkm']}/km" if g else ("💤 Descanso" if d.get("es_descanso") else "⏳ Pendiente de registrar")
-            
-            es_hoy = (d.get('fecha') == hoy_str)
-            bg_border = "background: #EFF6FF; border: 1.5px solid #3B82F6;" if es_hoy else "background: #F8FAFC; border: 1px solid #E2E8F0;"
-            hoy_badge = ' <span style="background: #0078D4; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">HOY</span>' if es_hoy else ""
+        if dias_esta_sem:
+            for d in dias_esta_sem:
+                g = d.get("garmin_entreno")
+                badge_cls = "garmin-badge-green" if "Cumplido" in d.get("estado", "") else ("garmin-badge-gray" if d.get("es_descanso") else "garmin-badge-orange")
+                garmin_txt = f"🏃 {g['distancia_km']} km | {g['tiempo_formateado']} | {g['ritmo_medio_minkm']}/km" if g else ("💤 Descanso" if d.get("es_descanso") else "⏳ Pendiente de registrar")
+                
+                es_hoy = (d.get('fecha') == hoy_str)
+                bg_border = "background: #EFF6FF; border: 1.5px solid #3B82F6;" if es_hoy else "background: #F8FAFC; border: 1px solid #E2E8F0;"
+                hoy_badge = ' <span style="background: #0078D4; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">HOY</span>' if es_hoy else ""
 
-            st.markdown(f"""
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; {bg_border} border-radius: 8px;">
-                <div>
-                    <div style="font-size: 12px; font-weight: 700; color: #181C20;">{d.get('dia_semana', '')} · <span style="color:#64748B; font-weight:normal;">{d.get('fecha', '')}</span>{hoy_badge}</div>
-                    <div style="font-size: 13px; font-weight: 700; color: #007CC3;">{d.get('titulo_sugerido', '')}</div>
-                    <div style="font-size: 11px; color: #64748B;">{garmin_txt}</div>
+                st.markdown(f"""
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 8px; {bg_border} border-radius: 8px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 700; color: #181C20;">{d.get('dia_semana', '')} · <span style="color:#64748B; font-weight:normal;">{d.get('fecha', '')}</span>{hoy_badge}</div>
+                        <div style="font-size: 13px; font-weight: 700; color: #007CC3;">{d.get('titulo_sugerido', '')}</div>
+                        <div style="font-size: 11px; color: #64748B;">{garmin_txt}</div>
+                    </div>
+                    <span class="{badge_cls}">{d.get('estado', '')}</span>
                 </div>
-                <span class="{badge_cls}">{d.get('estado', '')}</span>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="padding: 24px 12px; text-align: center; color: #64748B;">
+                <div style="font-size: 28px; margin-bottom: 8px;">📋</div>
+                <div style="font-size: 15px; font-weight: 700; color: #181C20; margin-bottom: 4px;">Sin plan asignado para esta semana</div>
+                <div style="font-size: 12px;">Cada atleta cuenta con su propia planificación personalizada. Puedes configurar tu enlace de Google Docs en la pestaña <b>Plan Entrenador</b>.</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -1322,18 +1413,21 @@ with tab_plan:
     st.subheader("📋 Planificación del Entrenador vs. Entrenamientos Garmin")
     st.caption("Vinculado en tiempo real con el Google Doc de tu entrenador. Detecta cambios automáticos, etiquetas de series y discrepancias de fechas.")
 
-    doc_url = plan_entrenador.obtener_doc_url()
+    doc_url = usuario_activo.get("doc_plan_url")
 
-    col_p1, col_p2 = st.columns([3, 1])
-    with col_p1:
-        st.info(f"🔗 **Documento activo del míster**: [Abrir Google Doc del Entrenador]({doc_url})")
-    with col_p2:
-        if st.button("🔄 Comprobar cambios ahora", use_container_width=True):
-            cargar_plan_y_comparativa.clear()
-            st.success("Plan recargado en vivo directamente desde Google Docs.")
-            st.rerun()
+    if doc_url:
+        col_p1, col_p2 = st.columns([3, 1])
+        with col_p1:
+            st.info(f"🔗 **Documento activo de {usuario_activo['nombre']}**: [Abrir Google Doc de tu Planificación]({doc_url})")
+        with col_p2:
+            if st.button("🔄 Comprobar cambios ahora", use_container_width=True, key="btn_check_plan_now"):
+                cargar_plan_y_comparativa.clear()
+                st.success("Plan recargado en vivo directamente desde Google Docs.")
+                st.rerun()
+    else:
+        st.warning(f"⚠️ **{usuario_activo['nombre']} no tiene asignado un enlace de Google Docs con su planificación.** Cada atleta cuenta con un documento independiente.")
 
-    plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url)
+    plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url, u_id=usuario_id)
     comparativa = reconciliacion.get("comparativa", [])
     preguntas = reconciliacion.get("preguntas_discrepancias", [])
 
@@ -1457,13 +1551,31 @@ with tab_plan:
                 with c_estado:
                     st.markdown(f"**{item['estado']}**")
                 st.divider()
+    else:
+        if not doc_url:
+            st.markdown("""
+            <div style="background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 12px; padding: 24px; text-align: center; margin: 15px 0;">
+                <div style="font-size: 32px; margin-bottom: 8px;">📋</div>
+                <div style="font-size: 16px; font-weight: 800; color: #1E293B; margin-bottom: 6px;">Sin Planificación de Google Docs Asignada</div>
+                <div style="font-size: 13px; color: #64748B; max-width: 500px; margin: 0 auto 12px auto;">
+                    Tu entrenador personaliza las semanas de entreno en un Google Doc único para ti. Pega tu enlace a continuación para activar el seguimiento automático.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("No se han encontrado sesiones en el documento o no tiene el formato esperado. Revisa que el enlace sea accesible y público para lectura.")
 
     # Configuración de URL del documento
-    with st.expander("⚙️ Configuración del enlace de Google Docs"):
-        nueva_url = st.text_input("URL del Google Doc de entrenamientos:", value=doc_url)
-        if st.button("Guardar nuevo enlace"):
-            plan_entrenador.guardar_doc_url(nueva_url)
-            st.success("Enlace actualizado correctamente.")
+    with st.expander("⚙️ Configuración del enlace de Google Docs de este atleta", expanded=(not doc_url)):
+        nueva_url = st.text_input("URL del Google Doc de entrenamientos:", value=doc_url or "", key="input_doc_url_tab_plan")
+        if st.button("💾 Guardar enlace del plan", key="btn_save_plan_tab_plan"):
+            n_clean = nueva_url.strip() if nueva_url and nueva_url.strip() else None
+            database.ejecutar_consulta_sql(
+                "UPDATE usuarios SET doc_plan_url = ? WHERE id = ?",
+                (n_clean, usuario_id)
+            )
+            cargar_plan_y_comparativa.clear()
+            st.success("¡Enlace actualizado correctamente para este atleta!")
             st.rerun()
 
 # ==================== COMPONENTE: RÉCORDS PERSONALES (PB) ====================
@@ -2426,7 +2538,7 @@ with tab_personal:
             "📥 Sincronizar Garmin",
             "📥 Sincronizar Coros",
             "📥 Sincronizar Strava"
-        ] if es_entrenador else [
+        ] if (es_entrenador or es_salva) else [
             "🏆 Récords Personales (PB)",
             "🎽 Ficha de Sesión e Historial",
             "📥 Sincronizar Garmin",
