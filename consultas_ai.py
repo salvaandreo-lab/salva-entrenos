@@ -3,6 +3,7 @@ import os
 import json
 import urllib.request
 import urllib.error
+from collections import OrderedDict
 import database
 import plotly.graph_objects as go
 from typing import Dict, Any, List, Optional
@@ -34,28 +35,33 @@ def obtener_gemini_api_key() -> str:
     # 3. Variable de entorno
     return os.getenv("GEMINI_API_KEY", "").strip()
 
-def llamar_gemini_api(prompt: str, api_key: str, model: str = "gemini-2.5-flash") -> str:
-    """Envía un prompt a la API de Google Gemini vía REST de forma ultra-rápida."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    payload = {
-        "contents": [
-            {"parts": [{"text": prompt}]}
-        ]
-    }
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json; charset=utf-8"},
-        method="POST"
-    )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        res_json = json.loads(resp.read().decode("utf-8"))
-        candidates = res_json.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            if parts:
-                return parts[0].get("text", "").strip()
+def llamar_gemini_api(prompt: str, api_key: str, model: str = "gemini-3.8-flash") -> str:
+    """Envía un prompt a la API de Google Gemini vía REST con reintento automático de modelos."""
+    modelos = [model, "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+    for mod in modelos:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={api_key}"
+        payload = {
+            "contents": [
+                {"parts": [{"text": prompt}]}
+            ]
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                res_json = json.loads(resp.read().decode("utf-8"))
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "").strip()
+        except Exception:
+            continue
     return ""
 
 def calcular_ritmo_str(tiempo_s: float, distancia_km: float) -> str:
@@ -394,6 +400,181 @@ Tabla 2: 'series_laps' (Detalle de cada vuelta o serie dentro de un entreno)
 - tipo_intervalo: TEXT (ej: 'serie_400m', 'calentamiento', 'enfriamiento')
 """
 
+def procesar_consulta_series(pregunta: str, usuario_id: int = 1) -> Optional[str]:
+    """
+    Procesa consultas específicas sobre series de cualquier distancia (400m, 1000m, etc.)
+    detectando la cantidad de sesiones solicitadas ('3 últimas', 'últimas 5', 'la última', etc.),
+    generando una tabla comparativa entre sesiones, análisis de progresión del entrenador
+    y el desglose detallado de repeticiones de cada día.
+    """
+    pregunta_lower = pregunta.lower().strip()
+    match_serie = re.search(r'series?\s+(?:de\s+)?(\d+)\s*(?:m|metros|mtrs)?', pregunta_lower)
+    if not match_serie:
+        match_serie = re.search(r'(\d+)\s*(?:m|metros|mtrs)\s+series?', pregunta_lower)
+    if not match_serie:
+        m_alt = re.search(r'(?:veces|sesion(?:es)?|días)?\s*(?:de\s+)?(\d{3,4})\s*(?:m|metros|mtrs)', pregunta_lower)
+        if m_alt and any(k in pregunta_lower for k in ["serie", "repeticion", "pista", "interval"]):
+            match_serie = m_alt
+        else:
+            return None
+
+    distancia = int(match_serie.group(1))
+
+    # Detectar cantidad N solicitada (ej. "3 últimas", "últimas 5", "dos últimas")
+    n_sesiones = 3
+    palabras_num = {
+        'una': 1, 'un': 1, 'uno': 1, 'primera': 1,
+        'dos': 2, 'segunda': 2,
+        'tres': 3, 'tercera': 3,
+        'cuatro': 4, 'cuarta': 4,
+        'cinco': 5, 'quinta': 5,
+        'seis': 6, 'ocho': 8, 'diez': 10
+    }
+    m_num = re.search(r'(?:las|los)?\s*(\d+)\s*últim', pregunta_lower)
+    if m_num:
+        n_sesiones = int(m_num.group(1))
+    else:
+        for p, val in palabras_num.items():
+            if f"{p} últim" in pregunta_lower:
+                n_sesiones = val
+                break
+    if "la última vez" in pregunta_lower or "el último día" in pregunta_lower or "última sesión" in pregunta_lower:
+        n_sesiones = 1
+
+    # Ventana de distancia y filtro de ritmo máximo para descartar trotes/recuperaciones
+    min_m = distancia * 0.88
+    max_m = distancia * 1.12
+
+    tiempo_max_serie = {
+        200: 65.0,
+        300: 90.0,
+        400: 115.0,
+        500: 145.0,
+        800: 230.0,
+        1000: 290.0,
+        1500: 440.0,
+        2000: 590.0,
+        3000: 900.0,
+        4000: 1220.0,
+        5000: 1550.0
+    }.get(distancia, (distancia / 1000.0) * 310.0)
+
+    query = """
+    SELECT e.id as entreno_id, e.fecha, e.titulo, e.ubicacion,
+           s.lap_numero, s.distancia_m, s.tiempo_s, s.tiempo_formateado,
+           s.ritmo_minkm, s.fc_media, s.fc_max
+    FROM series_laps s
+    JOIN entrenamientos e ON s.entrenamiento_id = e.id
+    WHERE s.distancia_m BETWEEN ? AND ?
+      AND s.tiempo_s <= ?
+      AND e.usuario_id = ?
+    ORDER BY e.fecha DESC, s.lap_numero ASC
+    """
+    filas = database.ejecutar_consulta_sql(query, (min_m, max_m, tiempo_max_serie, usuario_id))
+    if not filas or "error" in filas[0]:
+        query_soft = """
+        SELECT e.id as entreno_id, e.fecha, e.titulo, e.ubicacion,
+               s.lap_numero, s.distancia_m, s.tiempo_s, s.tiempo_formateado,
+               s.ritmo_minkm, s.fc_media, s.fc_max
+        FROM series_laps s
+        JOIN entrenamientos e ON s.entrenamiento_id = e.id
+        WHERE s.distancia_m BETWEEN ? AND ? AND e.usuario_id = ?
+        ORDER BY e.fecha DESC, s.lap_numero ASC
+        """
+        filas = database.ejecutar_consulta_sql(query_soft, (min_m, max_m, usuario_id))
+        if not filas or "error" in filas[0]:
+            return f"No he encontrado series registradas de aproximadamente **{distancia}m** en tu historial."
+
+    # Agrupar por entrenamiento
+    sesiones_dict = OrderedDict()
+    for f in filas:
+        eid = f.get("entreno_id")
+        if not eid: continue
+        if eid not in sesiones_dict:
+            sesiones_dict[eid] = {
+                "id": eid,
+                "fecha": f.get("fecha", ""),
+                "titulo": f.get("titulo", "Entrenamiento"),
+                "ubicacion": f.get("ubicacion") or "",
+                "laps": []
+            }
+        sesiones_dict[eid]["laps"].append(f)
+
+    todas_sesiones = list(sesiones_dict.values())
+    if not todas_sesiones:
+        return f"No he encontrado series registradas de **{distancia}m** en tu historial."
+
+    # Priorizar sesiones de series reales (>= 3 series, luego >= 2)
+    sesiones_reales = [s for s in todas_sesiones if len(s["laps"]) >= 3]
+    if len(sesiones_reales) < n_sesiones:
+        sesiones_reales = [s for s in todas_sesiones if len(s["laps"]) >= 2]
+    if len(sesiones_reales) < n_sesiones:
+        sesiones_reales = todas_sesiones
+
+    seleccionadas = sesiones_reales[:n_sesiones]
+
+    # Calcular estadísticas de cada sesión
+    for s in seleccionadas:
+        laps = s["laps"]
+        s["mejor_lap"] = min(laps, key=lambda x: x["tiempo_s"])
+        s["peor_lap"] = max(laps, key=lambda x: x["tiempo_s"])
+        t_media = sum(l["tiempo_s"] for l in laps) / len(laps)
+        s["tiempo_medio_s"] = t_media
+        s["tiempo_medio_fmt"] = formatear_segundos(int(round(t_media)))
+        s["ritmo_medio_fmt"] = calcular_ritmo_str(t_media, distancia / 1000.0)
+        fcs = [l["fc_media"] for l in laps if l.get("fc_media")]
+        s["fc_media_val"] = int(round(sum(fcs) / len(fcs))) if fcs else None
+
+    # Récord histórico global en esa distancia
+    mejor_global = min(filas, key=lambda x: x["tiempo_s"])
+
+    texto = f"### ⚡ Historial de Series de {distancia}m ({len(seleccionadas)} {'última sesión' if len(seleccionadas) == 1 else 'últimas sesiones'})\n\n"
+
+    if len(seleccionadas) > 1:
+        texto += f"He localizado las **{len(seleccionadas)} últimas sesiones** en las que hiciste series de {distancia} metros:\n\n"
+        texto += "| # | Fecha | Título / Lugar | Repeticiones | Mejor Serie | Ritmo Mejor | Media de Series | FC Media |\n"
+        texto += "|---|---|---|---|---|---|---|---|\n"
+        for idx, s in enumerate(seleccionadas, 1):
+            fc_txt = f"{s['fc_media_val']} ppm" if s['fc_media_val'] else "- ppm"
+            texto += f"| {idx} | **{s['fecha'][:10]}** | {s['titulo']} | **{len(s['laps'])}x{distancia}m** | **{s['mejor_lap']['tiempo_formateado']}** (Lap #{s['mejor_lap']['lap_numero']}) | {s['mejor_lap']['ritmo_minkm']} min/km | **{s['tiempo_medio_fmt']}** ({s['ritmo_medio_fmt']} min/km) | {fc_txt} |\n"
+        texto += "\n"
+
+        # Comparativa y análisis técnico
+        s_reciente = seleccionadas[0]
+        s_anterior = seleccionadas[1]
+        diff_media = s_reciente["tiempo_medio_s"] - s_anterior["tiempo_medio_s"]
+        if diff_media < -1.0:
+            comentario = f"📈 **Evolución positiva:** En tu última sesión ({s_reciente['fecha'][:10]}) bajaste la media en **{abs(diff_media):.1f}s** respecto a la anterior ({s_anterior['fecha'][:10]}). ¡Gran progresión de velocidad!"
+        elif abs(diff_media) <= 1.0:
+            comentario = f"🎯 **Consistencia excelente:** Mantuviste un ritmo medio casi idéntico y muy regular entre la sesión del {s_reciente['fecha'][:10]} y la del {s_anterior['fecha'][:10]}."
+        else:
+            comentario = f"ℹ️ En la sesión del {s_reciente['fecha'][:10]} la media fue de {s_reciente['tiempo_medio_fmt']}, con una mejor repetición rápida de {s_reciente['mejor_lap']['tiempo_formateado']}."
+        texto += f"{comentario}\n\n"
+    else:
+        s0 = seleccionadas[0]
+        fc_txt = f" con **{s0['fc_media_val']} ppm** medias" if s0['fc_media_val'] else ""
+        texto += f"**Última vez realizada:** {s0['fecha']} (*{s0['titulo']}*)\n"
+        texto += f"- **Total de series completadas:** **{len(s0['laps'])}** repeticiones de {distancia}m\n"
+        texto += f"- **Serie más rápida:** Lap #{s0['mejor_lap']['lap_numero']} en **{s0['mejor_lap']['tiempo_formateado']}** (ritmo {s0['mejor_lap']['ritmo_minkm']} min/km){fc_txt}\n"
+        texto += f"- **Media de las series:** **{s0['tiempo_medio_fmt']}** (ritmo medio {s0['ritmo_medio_fmt']} min/km)\n\n"
+
+    if mejor_global['tiempo_s'] < seleccionadas[0]['mejor_lap']['tiempo_s']:
+        fc_g = f" ({mejor_global['fc_media']} ppm)" if mejor_global.get('fc_media') else ""
+        texto += f"🔥 **Récord histórico de {distancia}m:** El **{mejor_global['fecha'][:10]}** volaste en **{mejor_global['tiempo_formateado']}** ({mejor_global['ritmo_minkm']} min/km){fc_g}.\n\n"
+
+    # Tablas de detalle por sesión
+    for idx, s in enumerate(seleccionadas, 1):
+        texto += f"#### 📋 Sesión {idx}: {s['fecha'][:10]} · {s['titulo']} ({len(s['laps'])}x{distancia}m)\n"
+        texto += "| # Serie | Distancia | Tiempo | Ritmo | FC Media | FC Máx |\n"
+        texto += "|---|---|---|---|---|---|\n"
+        for l in s["laps"]:
+            fc_m = f"{l['fc_media']} ppm" if l.get("fc_media") else "- ppm"
+            fc_x = f"{l['fc_max']} ppm" if l.get("fc_max") else "- ppm"
+            texto += f"| #{l['lap_numero']} | {int(l['distancia_m'])}m | {l['tiempo_formateado']} | {l['ritmo_minkm']} min/km | {fc_m} | {fc_x} |\n"
+        texto += "\n"
+
+    return texto
+
 def responder_con_text_to_sql(pregunta: str, api_key: str, usuario_id: int = 1) -> Optional[str]:
     """Motor inteligente Text-to-SQL con Gemini para preguntas deportivas generales."""
     try:
@@ -486,55 +667,21 @@ def responder_consulta_entrenamientos(pregunta: str, usuario_id: int = 1) -> Any
                 "frente_a_frente": faf_datos
             }
 
-    # ==================== CASO 2: TEXT-TO-SQL CON GEMINI ====================
+    # ==================== CASO 2: ANÁLISIS DE SERIES MULTI-SESIÓN ====================
+    resp_series = procesar_consulta_series(pregunta, usuario_id=usuario_id)
+    if resp_series:
+        return resp_series
+
+    # ==================== CASO 3: TEXT-TO-SQL CON GEMINI ====================
     if api_key:
         respuesta_motor = responder_con_text_to_sql(pregunta, api_key, usuario_id=usuario_id)
         if respuesta_motor:
             return respuesta_motor
 
-    # ==================== CASO 3: MOTOR DE RESPALDO (REGLAS LOCALES) ====================
-    # Series de X metros
-    match_serie = re.search(r'series?\s+(?:de\s+)?(\d+)\s*(?:m|metros)?', pregunta_lower)
-    if match_serie:
-        distancia = int(match_serie.group(1))
-        min_m = distancia * 0.90
-        max_m = distancia * 1.10
-
-        query = """
-        SELECT e.fecha, e.titulo, s.lap_numero, s.distancia_m, s.tiempo_s,
-               s.tiempo_formateado, s.ritmo_minkm, s.fc_media, s.fc_max
-        FROM series_laps s
-        JOIN entrenamientos e ON s.entrenamiento_id = e.id
-        WHERE s.distancia_m BETWEEN ? AND ? AND e.usuario_id = ?
-        ORDER BY e.fecha DESC, s.lap_numero ASC
-        """
-        filas = database.ejecutar_consulta_sql(query, (min_m, max_m, usuario_id))
-        if not filas:
-            return f"No he encontrado series de aproximadamente {distancia} metros en tu historial registrado."
-
-        ultima_fecha = filas[0]["fecha"]
-        series_ultima_sesion = [f for f in filas if f["fecha"] == ultima_fecha]
-        mas_rapida_sesion = min(series_ultima_sesion, key=lambda x: x["tiempo_s"])
-        mas_rapida_historica = min(filas, key=lambda x: x["tiempo_s"])
-
-        respuesta = f"### 🏃 Series de {distancia}m detectadas\n\n"
-        respuesta += f"**Última vez realizada:** {ultima_fecha} (*{series_ultima_sesion[0]['titulo']}*)\n"
-        respuesta += f"- **Total de series completadas:** {len(series_ultima_sesion)}\n"
-        respuesta += f"- **Serie más rápida de ese día:** Serie #{mas_rapida_sesion['lap_numero']} en **{mas_rapida_sesion['tiempo_formateado']}** (ritmo {mas_rapida_sesion['ritmo_minkm']} min/km) con {mas_rapida_sesion['fc_media']} ppm medias.\n\n"
-
-        if mas_rapida_historica['tiempo_s'] < mas_rapida_sesion['tiempo_s']:
-            respuesta += f"⚡ **Récord histórico de {distancia}m:** El {mas_rapida_historica['fecha']} hiciste una serie en **{mas_rapida_historica['tiempo_formateado']}** (ritmo {mas_rapida_historica['ritmo_minkm']} min/km).\n\n"
-
-        respuesta += "| # Serie | Distancia | Tiempo | Ritmo | FC Media | FC Máx |\n"
-        respuesta += "|---|---|---|---|---|---|\n"
-        for s in series_ultima_sesion:
-            respuesta += f"| #{s['lap_numero']} | {int(s['distancia_m'])}m | {s['tiempo_formateado']} | {s['ritmo_minkm']} | {s['fc_media'] or '-'} ppm | {s['fc_max'] or '-'} ppm |\n"
-        return respuesta
-
-    # Resumen general
+    # ==================== CASO 4: RESUMEN GENERAL (RESPALDO) ====================
     stats = database.obtener_resumen_estadisticas(usuario_id=usuario_id)
     return (f"📊 **Resumen de tu historial en SportTracks:**\n\n"
             f"- **Entrenamientos totales:** {stats['total_entrenos']}\n"
             f"- **Kilómetros acumulados:** {stats['total_km']} km\n"
             f"- **Series e intervalos guardados:** {stats['total_series']}\n\n"
-            f"💡 *Puedes preguntarme lo que quieras: comparativas, records, carreras en Orihuela o Santa Pola, tiradas largas o medias mensuales.*")
+            f"💡 *Puedes preguntarme lo que quieras: 'busca las 3 últimas veces que hice series de 400m', comparativas en Orihuela o Santa Pola, tiradas largas o medias mensuales.*")
