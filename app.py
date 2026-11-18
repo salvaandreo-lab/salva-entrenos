@@ -1442,8 +1442,8 @@ with tab_plan:
     st.caption("Vinculado en tiempo real con el Google Doc de tu entrenador. Detecta cambios automáticos, etiquetas de series y discrepancias de fechas.")
 
     doc_url = usuario_activo.get("doc_plan_url")
-if not doc_url and es_salva:
-    doc_url = plan_entrenador.obtener_doc_url()
+    if not doc_url and es_salva:
+        doc_url = plan_entrenador.obtener_doc_url()
 
     if doc_url:
         col_p1, col_p2 = st.columns([3, 1])
