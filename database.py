@@ -84,7 +84,7 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         usuarios_seed = [
-            (1, 'Salva Andreo', 'salva', 'atleta', 2, 'salva@teamardil.com', 'SA', None),
+            (1, 'Salva Andreo', 'salva', 'atleta', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
             (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
             (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None)
         ]
@@ -119,10 +119,36 @@ def obtener_usuario_por_id(usuario_id: int) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", entrenador_id: Optional[int] = 2,
-                               email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None) -> int:
-    """Crea un nuevo atleta o actualiza su perfil."""
+                               email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None,
+                               usuario_id: Optional[int] = None) -> int:
+    """Crea un nuevo atleta o actualiza su perfil de forma segura."""
     conn = get_connection()
     cursor = conn.cursor()
+    alias_clean = alias.lower().strip()
+
+    if usuario_id:
+        cursor.execute("""
+        UPDATE usuarios SET
+            nombre = ?,
+            alias = ?,
+            rol = ?,
+            entrenador_id = ?,
+            email = ?,
+            avatar = ?,
+            doc_plan_url = COALESCE(?, doc_plan_url)
+        WHERE id = ?
+        """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_plan_url, usuario_id))
+        conn.commit()
+        conn.close()
+        return usuario_id
+
+    # Si es alta nueva, prevenir sobrescribir el alias protegido de Salva
+    if alias_clean == "salva":
+        cursor.execute("SELECT id FROM usuarios WHERE alias = 'salva'")
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else 1
+
     cursor.execute("""
     INSERT INTO usuarios (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -132,10 +158,12 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
         entrenador_id = excluded.entrenador_id,
         email = excluded.email,
         avatar = excluded.avatar,
-        doc_plan_url = excluded.doc_plan_url
-    """, (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url))
-    uid = cursor.lastrowid
+        doc_plan_url = COALESCE(excluded.doc_plan_url, usuarios.doc_plan_url)
+    """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_plan_url))
     conn.commit()
+    cursor.execute("SELECT id FROM usuarios WHERE alias = ?", (alias_clean,))
+    row = cursor.fetchone()
+    uid = row[0] if row else cursor.lastrowid
     conn.close()
     return uid
 
