@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import date, timedelta, datetime
 from typing import List, Dict, Any, Optional, Tuple
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "sporttracks.db")
@@ -445,6 +446,78 @@ def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str
         "enfriamiento_km": enfriamiento_km
     }
     return resultado, resumen
+
+def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any]:
+    """Obtiene el estado general de todos los atletas asignados a un entrenador."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if entrenador_id:
+        cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' AND (entrenador_id = ? OR entrenador_id IS NULL) ORDER BY nombre ASC", (entrenador_id,))
+    else:
+        cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' ORDER BY nombre ASC")
+
+    atletas = [dict(r) for r in cursor.fetchall()]
+    hoy = date.today()
+    lunes_actual = (hoy - timedelta(days=hoy.weekday())).strftime("%Y-%m-%d")
+
+    total_km_equipo = 0.0
+    total_entrenos_equipo = 0
+
+    for a in atletas:
+        uid = a["id"]
+        cursor.execute("SELECT COUNT(*), SUM(distancia_km) FROM entrenamientos WHERE usuario_id = ?", (uid,))
+        r_stats = cursor.fetchone()
+        a["total_entrenos"] = r_stats[0] or 0
+        a["total_km"] = round(r_stats[1] or 0.0, 1)
+
+        total_km_equipo += (r_stats[1] or 0.0)
+        total_entrenos_equipo += (r_stats[0] or 0)
+
+        cursor.execute("SELECT SUM(distancia_km) FROM entrenamientos WHERE usuario_id = ? AND fecha >= ?", (uid, lunes_actual))
+        r_sem = cursor.fetchone()
+        a["km_semana"] = round(r_sem[0] or 0.0, 1)
+
+        cursor.execute("SELECT fecha, titulo, distancia_km, ritmo_medio_minkm, tiempo_formateado FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1", (uid,))
+        r_ult = cursor.fetchone()
+        if r_ult:
+            a["ultimo_fecha"] = r_ult["fecha"][:10]
+            a["ultimo_titulo"] = r_ult["titulo"]
+            a["ultimo_km"] = r_ult["distancia_km"]
+            a["ultimo_ritmo"] = r_ult["ritmo_medio_minkm"]
+            a["ultimo_tiempo"] = r_ult["tiempo_formateado"]
+        else:
+            a["ultimo_fecha"] = None
+            a["ultimo_titulo"] = None
+            a["ultimo_km"] = None
+            a["ultimo_ritmo"] = None
+            a["ultimo_tiempo"] = None
+
+    conn.close()
+
+    return {
+        "total_atletas": len(atletas),
+        "total_entrenos_equipo": total_entrenos_equipo,
+        "total_km_equipo": round(total_km_equipo, 1),
+        "atletas": atletas
+    }
+
+def obtener_ultimos_entrenos_equipo(limite: int = 15) -> List[Dict[str, Any]]:
+    """Devuelve las últimas actividades de todos los atletas para el feed del Míster."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.fecha, e.titulo, e.distancia_km, e.tiempo_formateado, e.ritmo_medio_minkm, e.fc_media,
+               u.nombre as atleta_nombre, u.avatar as atleta_avatar, u.id as usuario_id
+        FROM entrenamientos e
+        JOIN usuarios u ON e.usuario_id = u.id
+        WHERE u.rol = 'atleta'
+        ORDER BY e.fecha DESC
+        LIMIT ?
+    """, (limite,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 if __name__ == "__main__":
     init_db()
