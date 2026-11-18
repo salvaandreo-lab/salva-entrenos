@@ -1605,6 +1605,7 @@ if not doc_url and es_salva:
                 (n_clean, usuario_id)
             )
             cargar_plan_y_comparativa.clear()
+            database.persistir_base_datos(f"Actualizado Google Doc de atleta id {usuario_id} [skip ci]")
             st.success("¡Enlace actualizado correctamente para este atleta!")
             st.rerun()
 
@@ -2527,6 +2528,15 @@ def render_gestion_atletas():
                         )
                         st.success(f"Plan de {at['nombre']} actualizado.")
                         st.rerun()
+
+                if es_salva and at["id"] not in (1, 2):
+                    st.write("")
+                    col_del1, col_del2 = st.columns([3, 1])
+                    with col_del2:
+                        if st.button(f"🗑️ Dar de baja", key=f"btn_del_atleta_{at['id']}", help=f"Eliminar a {at['nombre']} del club"):
+                            database.eliminar_usuario(at["id"])
+                            st.warning(f"Atleta '{at['nombre']}' eliminado del equipo.")
+                            st.rerun()
 
     if es_salva:
         st.markdown("#### ➕ Registrar Nuevo Atleta en el Club")
