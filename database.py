@@ -424,15 +424,17 @@ def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str
         elif i == total - 1 and dist >= 1000 and total > 3:
             item["tipo_clasificado"] = "Enfriamiento"
             enfriamiento_km = round(dist / 1000.0, 2)
-        # 3. Recuperación: tramo corto (< 250m) o tiempo de descanso a ritmo lento
-        elif dist < 250 or (t_s <= 240 and any(k in ritmo for k in ["12:", "15:", "20:", "25:", "30:", "--"])):
-            item["tipo_clasificado"] = "Recuperación"
-            num_recup += 1
-        # 4. Serie principal
+        # 3. Recuperación: descanso parado (< 120m) o tramo a ritmo lento (> 4:40 min/km o pausas de trote/caminar)
         else:
-            item["tipo_clasificado"] = f"Serie #{num_serie}"
-            num_serie += 1
-            series_distancias.append(dist)
+            es_ritmo_lento = any(ritmo.startswith(p) for p in ["4:4", "4:5", "5:", "6:", "7:", "8:", "9:", "10:", "11:", "12:", "13:", "14:", "15:", "16:", "17:", "18:", "19:", "20:", "25:", "30:", "--"])
+            if dist < 120 or (dist < 380 and es_ritmo_lento) or (t_s <= 300 and any(k in ritmo for k in ["10:", "11:", "12:", "15:", "20:", "25:", "30:", "--"])):
+                item["tipo_clasificado"] = "Recuperación"
+                num_recup += 1
+            # 4. Serie principal (incluyendo series rápidas de 200m y 300m)
+            else:
+                item["tipo_clasificado"] = f"Serie #{num_serie}"
+                num_serie += 1
+                series_distancias.append(dist)
 
         resultado.append(item)
 
