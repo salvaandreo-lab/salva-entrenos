@@ -10,14 +10,32 @@ def get_connection():
     return conn
 
 def init_db():
-    """Crea las tablas necesarias si no existen."""
+    """Crea las tablas necesarias si no existen y asegura soporte multi-atleta."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Tabla de entrenamientos generales
+    # 1. Tabla de usuarios / atletas
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        alias TEXT UNIQUE NOT NULL,
+        rol TEXT NOT NULL DEFAULT 'atleta',
+        entrenador_id INTEGER,
+        email TEXT,
+        avatar TEXT DEFAULT '🏃',
+        doc_plan_url TEXT,
+        activo INTEGER DEFAULT 1,
+        fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (entrenador_id) REFERENCES usuarios(id)
+    )
+    """)
+
+    # 2. Tabla de entrenamientos generales
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS entrenamientos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER DEFAULT 1,
         fecha TEXT NOT NULL,
         titulo TEXT,
         deporte TEXT DEFAULT 'running',
@@ -31,11 +49,19 @@ def init_db():
         calorias INTEGER,
         ubicacion TEXT,
         notas_entrenador TEXT,
-        fit_hash TEXT UNIQUE
+        fit_hash TEXT UNIQUE,
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
     )
     """)
 
-    # Tabla de laps / series detalladas
+    # Comprobar si columna usuario_id ya existe en instalaciones previas
+    cursor.execute("PRAGMA table_info(entrenamientos)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "usuario_id" not in columns:
+        cursor.execute("ALTER TABLE entrenamientos ADD COLUMN usuario_id INTEGER DEFAULT 1")
+        cursor.execute("UPDATE entrenamientos SET usuario_id = 1 WHERE usuario_id IS NULL")
+
+    # 3. Tabla de laps / series detalladas
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS series_laps (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,22 +79,79 @@ def init_db():
     )
     """)
 
+    # 4. Usuarios iniciales del Team Ardil si la tabla está vacía
+    cursor.execute("SELECT COUNT(*) FROM usuarios")
+    if cursor.fetchone()[0] == 0:
+        usuarios_seed = [
+            (1, 'Salva Andreo', 'salva', 'atleta', 2, 'salva@teamardil.com', 'SA', None),
+            (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
+            (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None)
+        ]
+        cursor.executemany("""
+        INSERT INTO usuarios (id, nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, usuarios_seed)
+
     conn.commit()
     conn.close()
 
-def guardar_entrenamiento(datos_entreno: Dict[str, Any], laps: List[Dict[str, Any]]) -> Optional[int]:
-    """Guarda un entrenamiento completo con sus vueltas/series."""
+# ==================== FUNCIONES DE GESTIÓN DE USUARIOS / ATLETAS ====================
+def obtener_usuarios(filtro_rol: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Obtiene la lista de atletas o entrenadores."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if filtro_rol:
+        cursor.execute("SELECT * FROM usuarios WHERE rol = ? AND activo = 1 ORDER BY id ASC", (filtro_rol,))
+    else:
+        cursor.execute("SELECT * FROM usuarios WHERE activo = 1 ORDER BY id ASC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def obtener_usuario_por_id(usuario_id: int) -> Optional[Dict[str, Any]]:
+    """Devuelve la información de perfil de un atleta."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM usuarios WHERE id = ?", (usuario_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", entrenador_id: Optional[int] = 2,
+                               email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None) -> int:
+    """Crea un nuevo atleta o actualiza su perfil."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO usuarios (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(alias) DO UPDATE SET
+        nombre = excluded.nombre,
+        rol = excluded.rol,
+        entrenador_id = excluded.entrenador_id,
+        email = excluded.email,
+        avatar = excluded.avatar,
+        doc_plan_url = excluded.doc_plan_url
+    """, (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url))
+    uid = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return uid
+
+def guardar_entrenamiento(datos_entreno: Dict[str, Any], laps: List[Dict[str, Any]], usuario_id: int = 1) -> Optional[int]:
+    """Guarda un entrenamiento completo con sus vueltas/series para un atleta específico."""
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute("""
         INSERT INTO entrenamientos (
-            fecha, titulo, deporte, distancia_km, tiempo_total_s,
+            usuario_id, fecha, titulo, deporte, distancia_km, tiempo_total_s,
             tiempo_formateado, ritmo_medio_minkm, fc_media, fc_max,
             cadencia_media, calorias, ubicacion, notas_entrenador, fit_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
+            usuario_id,
             datos_entreno.get("fecha"),
             datos_entreno.get("titulo", "Entrenamiento"),
             datos_entreno.get("deporte", "running"),
@@ -114,16 +197,28 @@ def guardar_entrenamiento(datos_entreno: Dict[str, Any], laps: List[Dict[str, An
     finally:
         conn.close()
 
-def obtener_resumen_estadisticas() -> Dict[str, Any]:
-    """Obtiene totales para mostrar métricas clave."""
+def obtener_resumen_estadisticas(usuario_id: Optional[int] = None) -> Dict[str, Any]:
+    """Obtiene totales para mostrar métricas clave de un atleta o globales."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as total_entrenos, IFNULL(SUM(distancia_km), 0) as total_km FROM entrenamientos")
+    
+    where_sql = "WHERE usuario_id = ?" if usuario_id else ""
+    params = (usuario_id,) if usuario_id else ()
+
+    cursor.execute(f"SELECT COUNT(*) as total_entrenos, IFNULL(SUM(distancia_km), 0) as total_km FROM entrenamientos {where_sql}", params)
     row = cursor.fetchone()
     total_entrenos = row["total_entrenos"]
     total_km = round(row["total_km"], 1)
 
-    cursor.execute("SELECT COUNT(*) as total_series FROM series_laps")
+    if usuario_id:
+        cursor.execute("""
+            SELECT COUNT(*) as total_series 
+            FROM series_laps s
+            JOIN entrenamientos e ON s.entrenamiento_id = e.id
+            WHERE e.usuario_id = ?
+        """, (usuario_id,))
+    else:
+        cursor.execute("SELECT COUNT(*) as total_series FROM series_laps")
     total_series = cursor.fetchone()["total_series"]
 
     conn.close()
@@ -146,11 +241,14 @@ def ejecutar_consulta_sql(query: str, params: tuple = ()) -> List[Dict[str, Any]
     finally:
         conn.close()
 
-def obtener_records_personales() -> List[Dict[str, Any]]:
-    """Calcula y devuelve las mejores marcas históricas en distancias clave."""
+def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Calcula y devuelve las mejores marcas históricas en distancias clave de un atleta."""
     conn = get_connection()
     cursor = conn.cursor()
     records = []
+
+    u_filter_series = "AND e.usuario_id = ?" if usuario_id else ""
+    u_filter_entrenos = "AND usuario_id = ?" if usuario_id else ""
 
     # 1. Series en pista / intervalos
     intervalos = [
@@ -159,15 +257,17 @@ def obtener_records_personales() -> List[Dict[str, Any]]:
         ("2.000m (Serie)", 1900, 2100, "s.distancia_m BETWEEN 1900 AND 2100"),
     ]
     for nombre, _, _, condicion in intervalos:
-        cursor.execute(f"""
+        query = f"""
             SELECT '{nombre}' as categoria, s.tiempo_formateado as marca, s.ritmo_minkm as ritmo,
                    e.fecha, e.titulo, s.fc_media, s.tiempo_s
             FROM series_laps s
             JOIN entrenamientos e ON s.entrenamiento_id = e.id
-            WHERE {condicion} AND s.tiempo_s > 0
+            WHERE {condicion} AND s.tiempo_s > 0 {u_filter_series}
             ORDER BY s.tiempo_s ASC
             LIMIT 1
-        """)
+        """
+        params = (usuario_id,) if usuario_id else ()
+        cursor.execute(query, params)
         row = cursor.fetchone()
         if row:
             records.append(dict(row))
@@ -180,28 +280,33 @@ def obtener_records_personales() -> List[Dict[str, Any]]:
         ("Maratón (42.2k)", 41.5, 43.5)
     ]
     for nombre, d_min, d_max in distancias_carrera:
-        cursor.execute("""
+        query = f"""
             SELECT ? as categoria, tiempo_formateado as marca, ritmo_medio_minkm as ritmo,
                    fecha, titulo, fc_media, tiempo_total_s as tiempo_s
             FROM entrenamientos
-            WHERE distancia_km BETWEEN ? AND ? AND tiempo_total_s > 0
+            WHERE distancia_km BETWEEN ? AND ? AND tiempo_total_s > 0 {u_filter_entrenos}
             ORDER BY tiempo_total_s ASC
             LIMIT 1
-        """, (nombre, d_min, d_max))
+        """
+        params = (nombre, d_min, d_max, usuario_id) if usuario_id else (nombre, d_min, d_max)
+        cursor.execute(query, params)
         row = cursor.fetchone()
         if row:
             records.append(dict(row))
 
     # 3. Sesión más larga (tirada ultra o fondo)
-    cursor.execute("""
+    query_larga = f"""
         SELECT 'Tirada más larga' as categoria,
                PRINTF('%.2f km', distancia_km) as marca,
                ritmo_medio_minkm as ritmo,
                fecha, titulo, fc_media, tiempo_total_s as tiempo_s
         FROM entrenamientos
+        WHERE 1=1 {u_filter_entrenos}
         ORDER BY distancia_km DESC
         LIMIT 1
-    """)
+    """
+    params_larga = (usuario_id,) if usuario_id else ()
+    cursor.execute(query_larga, params_larga)
     row = cursor.fetchone()
     if row:
         records.append(dict(row))
@@ -209,55 +314,63 @@ def obtener_records_personales() -> List[Dict[str, Any]]:
     conn.close()
     return records
 
-def obtener_volumen_anual() -> List[Dict[str, Any]]:
-    """Calcula el resumen de kms y sesiones por año."""
+def obtener_volumen_anual(usuario_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Calcula el resumen de kms y sesiones por año de un atleta."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    u_sql = "AND usuario_id = ?" if usuario_id else ""
+    params = (usuario_id,) if usuario_id else ()
+    cursor.execute(f"""
         SELECT strftime('%Y', fecha) as anio,
                COUNT(*) as sesiones,
                ROUND(SUM(distancia_km), 1) as total_km,
                ROUND(AVG(distancia_km), 2) as media_km
         FROM entrenamientos
-        WHERE distancia_km > 0
+        WHERE distancia_km > 0 {u_sql}
         GROUP BY anio
         ORDER BY anio DESC
-    """)
+    """, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def obtener_volumen_mensual() -> List[Dict[str, Any]]:
-    """Calcula kms y sesiones agrupados por mes."""
+def obtener_volumen_mensual(usuario_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Calcula kms y sesiones agrupados por mes de un atleta."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    u_sql = "AND usuario_id = ?" if usuario_id else ""
+    params = (usuario_id,) if usuario_id else ()
+    cursor.execute(f"""
         SELECT strftime('%Y-%m', fecha) as mes,
                COUNT(*) as sesiones,
                ROUND(SUM(distancia_km), 1) as total_km
         FROM entrenamientos
-        WHERE distancia_km > 0
+        WHERE distancia_km > 0 {u_sql}
         GROUP BY mes
         ORDER BY mes ASC
-    """)
+    """, params)
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def obtener_volumen_semanal() -> List[Dict[str, Any]]:
-    """Calcula kms y sesiones agrupados por semana (ISO week)."""
+def obtener_volumen_semanal(usuario_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Calcula kms y sesiones agrupados por semana (ISO week) de un atleta."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    u_sql = "AND usuario_id = ?" if usuario_id else ""
+    params = (usuario_id,) if usuario_id else ()
+    cursor.execute(f"""
         SELECT strftime('%Y-W%W', fecha) as semana,
                COUNT(*) as sesiones,
                ROUND(SUM(distancia_km), 1) as total_km
         FROM entrenamientos
-        WHERE distancia_km > 0
+        WHERE distancia_km > 0 {u_sql}
         GROUP BY semana
         ORDER BY semana ASC
-    """)
+    """, params)
     rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
     conn.close()
     return rows
 
