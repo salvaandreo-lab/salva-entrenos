@@ -392,9 +392,71 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
     detalle = " · ".join(mensajes)
     return total_nuevas, total_omitidas, detalle
 
+# Carga de usuarios y gestión de sesión multi-atleta
+usuarios_db = database.obtener_usuarios()
+if not usuarios_db:
+    database.init_db()
+    usuarios_db = database.obtener_usuarios()
+
+if "usuario_id_activo" not in st.session_state:
+    st.session_state["usuario_id_activo"] = 1
+
+# Validar que el usuario actual existe en la base de datos
+ids_validos = [u["id"] for u in usuarios_db]
+if st.session_state["usuario_id_activo"] not in ids_validos:
+    st.session_state["usuario_id_activo"] = 1
+
+usuario_activo = next((u for u in usuarios_db if u["id"] == st.session_state["usuario_id_activo"]), usuarios_db[0])
+es_entrenador = (usuario_activo.get("rol") == "entrenador")
+usuario_id = usuario_activo["id"]
+
+# ==================== BARRA LATERAL (SIDEBAR): SELECTOR DE PERFIL ====================
+with st.sidebar:
+    st.markdown("### 🏃 Team Ardil Hub")
+    st.caption("Plataforma de Atletismo y Rendimiento")
+
+    nombres_usuarios = [f"{u.get('avatar', '🏃')} {u['nombre']} ({'Míster' if u['rol'] == 'entrenador' else 'Atleta'})" for u in usuarios_db]
+    idx_actual = next((i for i, u in enumerate(usuarios_db) if u["id"] == usuario_activo["id"]), 0)
+
+    sel_perfil = st.selectbox(
+        "👤 Perfil Activo:",
+        nombres_usuarios,
+        index=idx_actual,
+        key="selector_perfil_sidebar"
+    )
+    nuevo_uid = usuarios_db[nombres_usuarios.index(sel_perfil)]["id"]
+    if nuevo_uid != st.session_state["usuario_id_activo"]:
+        st.session_state["usuario_id_activo"] = nuevo_uid
+        if nuevo_uid == 2:
+            st.session_state["mister_inspeccionando"] = False
+        st.rerun()
+
+    st.markdown("---")
+
+    # Alta rápida de compañero / atleta
+    with st.expander("➕ Añadir compañero / atleta", expanded=False):
+        n_nombre = st.text_input("Nombre y Apellidos:", placeholder="Ej: Pedro Martínez", key="nuevo_atleta_nombre")
+        n_alias = st.text_input("Alias (corto):", placeholder="pedro", key="nuevo_atleta_alias")
+        n_avatar = st.text_input("Iniciales Avatar (2 letras):", placeholder="PM", max_chars=3, key="nuevo_atleta_avatar")
+        if st.button("Guardar Atleta", use_container_width=True, key="btn_guardar_nuevo_atleta"):
+            if n_nombre and n_alias:
+                database.crear_o_actualizar_usuario(
+                    nombre=n_nombre.strip(),
+                    alias=n_alias.lower().strip(),
+                    rol="atleta",
+                    entrenador_id=2,
+                    avatar=n_avatar.upper().strip() if n_avatar else "🏃"
+                )
+                st.success(f"Atleta '{n_nombre}' registrado.")
+                st.rerun()
+            else:
+                st.warning("Introduce al menos nombre y alias.")
+
 # Encabezado SportTracks AI con icono e insignia oficial Team Ardil
 ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
 ardil_pill_html = f'<div class="notranslate" translate="no" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span class="notranslate" translate="no" style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
+ardil_sub_txt = f"Team Ardil · Athletics Coach | {usuario_activo['nombre']}" if not es_entrenador else "Team Ardil · Panel de Control del Entrenador"
+avatar_txt = usuario_activo.get("avatar") or "SA"
 
 st.markdown(f"""
 <div class="garmin-topbar notranslate" translate="no">
@@ -404,7 +466,7 @@ st.markdown(f"""
             <div class="garmin-brand-title notranslate" translate="no">
                 SPORTTRACKS<span style="color: #00A3E0; font-size: 13px; vertical-align: super;"> AI</span>
             </div>
-            <div class="garmin-brand-sub notranslate" translate="no">Team Ardil · Athletics Coach | Salva Andreo</div>
+            <div class="garmin-brand-sub notranslate" translate="no">{ardil_sub_txt}</div>
         </div>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
@@ -412,29 +474,39 @@ st.markdown(f"""
         <div class="garmin-device-pill notranslate" translate="no">
             {pill_device_html}
         </div>
-        <div class="garmin-avatar notranslate" translate="no">SA</div>
+        <div class="garmin-avatar notranslate" translate="no">{avatar_txt}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Resumen superior
-stats = database.obtener_resumen_estadisticas()
+if st.session_state.get("mister_inspeccionando") and not es_entrenador:
+    col_insp1, col_insp2 = st.columns([4, 1.2])
+    with col_insp1:
+        st.info(f"👨‍🏫 **Modo Vista Míster Activo:** Estás inspeccionando la ficha, entrenamientos y series de **{usuario_activo['nombre']}**.")
+    with col_insp2:
+        if st.button("🔙 Volver al Míster", type="primary", use_container_width=True, key="btn_volver_mister"):
+            st.session_state["usuario_id_activo"] = 2
+            st.session_state["mister_inspeccionando"] = False
+            st.rerun()
+
+# Resumen superior filtrado por atleta activo
+stats = database.obtener_resumen_estadisticas(usuario_id=usuario_id)
 total_km = stats.get("total_km", 0)
 total_entrenos = stats.get("total_entrenos", 0)
 media_km = round(total_km / max(1, total_entrenos), 1)
 
-doc_url = plan_entrenador.obtener_doc_url()
+doc_url = usuario_activo.get("doc_plan_url") or plan_entrenador.obtener_doc_url()
 
 @st.cache_data(ttl=120)
-def cargar_plan_y_comparativa(url_doc):
+def cargar_plan_y_comparativa(url_doc, u_id=1):
     try:
         p_dias = plan_entrenador.descargar_plan_entrenador(url_doc)
-        reconc = plan_entrenador.conciliar_plan_con_garmin(p_dias)
+        reconc = plan_entrenador.conciliar_plan_con_garmin(p_dias, usuario_id=u_id)
         return p_dias, reconc
     except Exception as e:
         return [], {"comparativa": [], "preguntas_discrepancias": []}
 
-plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url)
+plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url, u_id=usuario_id)
 comparativa_plan = reconciliacion.get("comparativa", [])
 
 def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str = "", plan_comparativa: list = None) -> bool:
@@ -535,20 +607,116 @@ def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="",
     )
     return fig
 
-# Pestañas principales organizadas de forma limpia
-tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
-    "🏠 Inicio",
-    "💬 Entrenador IA (Chat)",
-    "📋 Plan Entrenador",
-    "⚡ Análisis de Series",
-    "📈 Volumen y Carga Semanal",
-    "👤 Personal"
-])
+# ==================== MONITOR GENERAL DEL ENTRENADOR ====================
+def render_monitor_equipo():
+    st.markdown("### 👑 Monitor General del Equipo · Team Ardil")
+    st.caption("Visión global de todos los atletas que diriges, volumen acumulado y estado de entrenamientos.")
 
-# ==================== PESTAÑA 0: INICIO (GARMIN CONNECT) ====================
-with tab_home:
+    resumen_eq = database.obtener_resumen_equipo(entrenador_id=usuario_id)
+    atletas = resumen_eq.get("atletas", [])
+
+    # Tarjetas Métricas Superiores estilo Power BI / Garmin Connect
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        st.metric("👥 Atletas Activos", len(atletas))
+    with col_m2:
+        st.metric("🏃 Entrenamientos Totales", resumen_eq.get("total_entrenos_equipo", 0))
+    with col_m3:
+        st.metric("📈 Kilómetros del Club", f"{resumen_eq.get('total_km_equipo', 0):,.1f} km")
+    with col_m4:
+        km_esta_sem = sum(a.get("km_semana", 0) for a in atletas)
+        st.metric("⚡ Km Esta Semana", f"{km_esta_sem:.1f} km")
+
+    st.markdown("---")
+    st.markdown("#### 🏃 Rendimiento y Estado de los Atletas")
+
+    if not atletas:
+        st.info("No hay atletas registrados todavía.")
+    else:
+        for a in atletas:
+            ult_fecha_txt = a.get('ultimo_fecha') or 'Sin registrar'
+            ult_tit_txt = a.get('ultimo_titulo') or ''
+            ult_det_txt = f"({a.get('ultimo_km')} km @ {a.get('ultimo_ritmo')} min/km)" if a.get('ultimo_km') else ""
+
+            col_info, col_kpis, col_btn = st.columns([3, 2, 1.5])
+            with col_info:
+                st.markdown(f"""
+                <div style="display: flex; align-items: center; gap: 12px; padding: 6px 0;">
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: #007CC3; color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                        {a.get('avatar', '🏃')}
+                    </div>
+                    <div>
+                        <div style="font-size: 16px; font-weight: 700; color: #181C20;">{a['nombre']} <span style="font-size: 12px; font-weight: 400; color: #64748B;">(@{a.get('alias', '')})</span></div>
+                        <div style="font-size: 12px; color: #64748B;">
+                            Último entreno: <b style="color: #0369A1;">{ult_fecha_txt}</b> {ult_tit_txt} {ult_det_txt}
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_kpis:
+                st.markdown(f"""
+                <div style="display: flex; gap: 20px; align-items: center; height: 100%;">
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Km Semana</div>
+                        <div style="font-size: 17px; font-weight: 800; color: #007CC3;">{a.get('km_semana', 0):.1f} km</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Histórico</div>
+                        <div style="font-size: 17px; font-weight: 800; color: #181C20;">{a.get('total_km', 0):,.1f} km</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_btn:
+                if st.button(f"🔍 Ficha {a['nombre'].split()[0]}", key=f"btn_insp_{a['id']}", use_container_width=True):
+                    st.session_state["usuario_id_activo"] = a["id"]
+                    st.session_state["mister_inspeccionando"] = True
+                    st.rerun()
+
+            st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
+
+    # Gráfico comparativo de volumen si hay atletas con kilómetros
+    atletas_con_km = [a for a in atletas if a.get("total_km", 0) > 0]
+    if len(atletas_con_km) > 1:
+        st.markdown("#### 📊 Comparativa de Volumen del Equipo")
+        df_comp = pd.DataFrame(atletas_con_km)
+        fig_comp = px.bar(
+            df_comp,
+            x="nombre",
+            y="total_km",
+            text="total_km",
+            color="nombre",
+            labels={"nombre": "Atleta", "total_km": "Kilómetros Totales"}
+        )
+        fig_comp.update_traces(texttemplate='%{text:.1f} km', textposition='outside')
+        aplicar_estilo_powerbi(fig_comp, titulo="Kilómetros Totales por Atleta", subtitulo="Volumen histórico acumulado")
+        st.plotly_chart(fig_comp, use_container_width=True)
+
+    st.markdown("#### ⚡ Últimos Entrenamientos Registrados por el Equipo")
+    ultimos_team = database.obtener_ultimos_entrenos_equipo(limite=15)
+    if ultimos_team:
+        df_team = pd.DataFrame(ultimos_team)
+        st.dataframe(
+            df_team[[
+                "atleta_nombre", "fecha", "titulo", "distancia_km",
+                "tiempo_formateado", "ritmo_medio_minkm", "fc_media"
+            ]].rename(columns={
+                "atleta_nombre": "Atleta",
+                "fecha": "Fecha",
+                "titulo": "Sesión",
+                "distancia_km": "Distancia (km)",
+                "tiempo_formateado": "Tiempo",
+                "ritmo_medio_minkm": "Ritmo",
+                "fc_media": "FC Media"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Aún no hay entrenamientos registrados en el equipo.")
+
+def render_tab_home_atleta():
     # --- 1. DATO: ÚLTIMO ENTRENO ---
-    ultimo_entreno_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos ORDER BY fecha DESC LIMIT 1")
+    ultimo_entreno_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1", (usuario_id,))
     if ultimo_entreno_raw:
         ult_entreno = ultimo_entreno_raw[0]
         f_ult_full = ult_entreno['fecha']
@@ -665,13 +833,13 @@ with tab_home:
     SELECT e.id, e.fecha, e.titulo, e.ubicacion, e.notas_entrenador
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
-    WHERE s.distancia_m >= 350
+    WHERE s.distancia_m >= 350 AND e.usuario_id = ?
     GROUP BY e.id
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
     LIMIT 25
     """
-    candidatos_series = database.ejecutar_consulta_sql(query_ult_series)
+    candidatos_series = database.ejecutar_consulta_sql(query_ult_series, (usuario_id,))
     ult_sesion_series = [
         s for s in candidatos_series
         if es_sesion_series_real(s["id"], s["fecha"], s["titulo"], s.get("notas_entrenador", ""), comparativa_plan)
@@ -819,7 +987,7 @@ with tab_home:
 
     with col_focus_left:
         # Actividad Reciente / Destacada
-        ultimos_entrenos = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos ORDER BY fecha DESC LIMIT 15")
+        ultimos_entrenos = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 15", (usuario_id,))
         if ultimos_entrenos:
             opciones_entrenos = {
                 f"{e['fecha'][:10]} · {e['titulo']} ({e['distancia_km']} km)": e['id']
@@ -932,6 +1100,33 @@ with tab_home:
             """, unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+# Pestañas principales organizadas de forma limpia
+if es_entrenador:
+    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
+        "👑 Monitor del Equipo",
+        "💬 Asistente IA del Míster",
+        "📋 Planificación Global",
+        "⚡ Análisis de Series",
+        "📈 Volumen del Club",
+        "👤 Configuración"
+    ])
+else:
+    tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_personal = st.tabs([
+        "🏠 Inicio",
+        "💬 Entrenador IA (Chat)",
+        "📋 Plan Entrenador",
+        "⚡ Análisis de Series",
+        "📈 Volumen y Carga Semanal",
+        "👤 Personal"
+    ])
+
+# ==================== PESTAÑA 0: INICIO O MONITOR DE EQUIPO ====================
+with tab_home:
+    if es_entrenador:
+        render_monitor_equipo()
+    else:
+        render_tab_home_atleta()
 
 
 
@@ -1100,7 +1295,7 @@ with tab_chat:
 
         with st.chat_message("assistant"):
             with st.spinner("El entrenador está consultando tu historial en Garmin..."):
-                resp = consultas_ai.responder_consulta_entrenamientos(pregunta_input)
+                resp = consultas_ai.responder_consulta_entrenamientos(pregunta_input, usuario_id=usuario_id)
                 if isinstance(resp, dict):
                     msg_content = resp.get("texto", "")
                     faf_data = resp.get("frente_a_frente")
@@ -1271,7 +1466,7 @@ def render_records_personales():
     st.subheader("🏆 Mejores Marcas Personales (Personal Bests)")
     st.caption("Detección automática de tus récords absolutos registrados en tu reloj Garmin.")
 
-    records = database.obtener_records_personales()
+    records = database.obtener_records_personales(usuario_id=usuario_id)
     if records:
         # Tarjetas de héroe en columnas
         num_cols = min(4, len(records))
@@ -1356,7 +1551,7 @@ with tab_volumen:
     st.caption("Evolución de kilómetros semanales, mensuales y anuales para control de picos de forma y descanso.")
 
     # 1. Volumen Semanal con media móvil y filtros por mes / 12 semanas (Destacado arriba)
-    vol_semanal = database.obtener_volumen_semanal()
+    vol_semanal = database.obtener_volumen_semanal(usuario_id=usuario_id)
     if vol_semanal:
         df_sem = pd.DataFrame(vol_semanal)
         df_sem["media_movil_4sem"] = df_sem["total_km"].rolling(window=4, min_periods=1).mean().round(1)
@@ -1490,7 +1685,7 @@ with tab_volumen:
     st.divider()
 
     # 2. Resumen Anual Histórico (Debajo)
-    vol_anual = database.obtener_volumen_anual()
+    vol_anual = database.obtener_volumen_anual(usuario_id=usuario_id)
     if vol_anual:
         st.markdown("#### 📅 Historial y Resumen por Temporada (Años)")
         df_anual = pd.DataFrame(vol_anual)
@@ -1536,7 +1731,7 @@ with tab_volumen:
 def render_historial_sesiones():
     st.subheader("📋 Historial y Ficha Detallada de Entrenamiento")
 
-    entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos ORDER BY fecha DESC")
+    entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC", (usuario_id,))
 
     if entrenos_raw:
         df_entrenos = pd.DataFrame(entrenos_raw)
@@ -1713,12 +1908,12 @@ with tab_series:
            MIN(s.tiempo_s) as min_seg
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
-    WHERE s.distancia_m BETWEEN {d_min} AND {d_max}
+    WHERE s.distancia_m BETWEEN {d_min} AND {d_max} AND e.usuario_id = ?
     GROUP BY e.id
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
     """
-    sesiones_series_raw = database.ejecutar_consulta_sql(query_sesiones)
+    sesiones_series_raw = database.ejecutar_consulta_sql(query_sesiones, (usuario_id,))
     # Filtrar estrictamente solo sesiones de series reales (respetando la regla del entrenador y descartando carreras/rodajes)
     sesiones_series = [
         s for s in sesiones_series_raw
@@ -1861,7 +2056,8 @@ def render_sincronizar_garmin():
                 nuevas, omitidas = garmin_sync.descargar_historial_garmin(
                     cliente,
                     max_actividades=50,
-                    callback_progreso=actualizar_progreso
+                    callback_progreso=actualizar_progreso,
+                    usuario_id=usuario_id
                 )
                 progress_bar.progress(1.0)
                 status_text.empty()
@@ -1905,7 +2101,7 @@ def render_sincronizar_garmin():
                         cliente, msg = garmin_sync.conectar_garmin(garmin_user, garmin_pass)
 
                     max_acts = limite_map.get(opcion_limite, 50)
-                    nuevas, omitidas = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts)
+                    nuevas, omitidas = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts, usuario_id=usuario_id)
                     st.success(f"🎉 Sincronizados **{nuevas}** nuevos entrenamientos de {garmin_user}.")
                     st.rerun()
                 except Exception as e:
@@ -1920,7 +2116,7 @@ def render_sincronizar_garmin():
                 tmp_path = tmp.name
             try:
                 datos_entreno, laps = garmin_sync.parsear_archivo_fit(tmp_path)
-                id_guardado = database.guardar_entrenamiento(datos_entreno, laps)
+                id_guardado = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
                 if id_guardado:
                     st.success(f"✅ ¡Entrenamiento '{datos_entreno['titulo']}' importado con éxito!")
                 else:
@@ -1959,7 +2155,7 @@ def render_sincronizar_coros():
                     p_bar.progress(pct)
                     st_text.text(f"Importando {act}/{tot}: {name}")
 
-                res = coros_sync.sincronizar_actividades_coros(progreso_callback=update_coros_p)
+                res = coros_sync.sincronizar_actividades_coros(progreso_callback=update_coros_p, usuario_id=usuario_id)
                 if res["status"] == "ok":
                     st.success(f"🎉 {res['mensaje']}")
                     st.rerun()
@@ -2018,7 +2214,7 @@ def render_sincronizar_coros():
                     tmp_p = tmp.name
                 try:
                     datos_e, laps_e = garmin_sync.parsear_archivo_fit(tmp_p)
-                    nid = database.guardar_entrenamiento(datos_e, laps_e)
+                    nid = database.guardar_entrenamiento(datos_e, laps_e, usuario_id=usuario_id)
                     if nid:
                         guardados += 1
                 except Exception:
@@ -2057,7 +2253,7 @@ def render_sincronizar_strava():
                     p_bar.progress(pct)
                     st_text.text(f"Importando {act}/{tot}: {name}")
 
-                res = strava_sync.sincronizar_actividades_strava(progreso_callback=update_strava_p)
+                res = strava_sync.sincronizar_actividades_strava(progreso_callback=update_strava_p, usuario_id=usuario_id)
                 if res["status"] == "ok":
                     st.success(f"🎉 {res['mensaje']}")
                     st.rerun()
@@ -2134,7 +2330,7 @@ def render_sincronizar_strava():
                     tmp_p = tmp.name
                 try:
                     datos_e, laps_e = garmin_sync.parsear_archivo_fit(tmp_p)
-                    nid = database.guardar_entrenamiento(datos_e, laps_e)
+                    nid = database.guardar_entrenamiento(datos_e, laps_e, usuario_id=usuario_id)
                     if nid:
                         guardados += 1
                 except Exception:
@@ -2145,25 +2341,94 @@ def render_sincronizar_strava():
             st.success(f"🎉 Se han importado {guardados} sesiones de Strava con éxito.")
             st.rerun()
 
+# ==================== COMPONENTE: GESTIÓN DE ATLETAS (MÍSTER) ====================
+def render_gestion_atletas():
+    st.subheader("👥 Gestión de Atletas del Team Ardil")
+    st.caption("Administra la plantilla, asigna documentos de Google Docs con la planificación y supervisa altas.")
+
+    atletas = database.obtener_usuarios(filtro_rol="atleta")
+    if atletas:
+        for at in atletas:
+            with st.expander(f"🏃 {at['nombre']} (@{at['alias']})", expanded=False):
+                col_u1, col_u2 = st.columns([2, 1])
+                with col_u1:
+                    nuevo_doc = st.text_input(
+                        f"URL Plan Google Doc de {at['nombre']}:",
+                        value=at.get("doc_plan_url") or "",
+                        key=f"doc_url_atleta_{at['id']}"
+                    )
+                with col_u2:
+                    st.write("")
+                    st.write("")
+                    if st.button("💾 Guardar URL", key=f"btn_save_doc_{at['id']}"):
+                        database.crear_o_actualizar_usuario(
+                            nombre=at["nombre"],
+                            alias=at["alias"],
+                            rol="atleta",
+                            entrenador_id=at.get("entrenador_id", 2),
+                            email=at.get("email"),
+                            avatar=at.get("avatar"),
+                            doc_plan_url=nuevo_doc.strip() if nuevo_doc else None,
+                            usuario_id=at["id"]
+                        )
+                        st.success(f"Plan de {at['nombre']} actualizado.")
+                        st.rerun()
+
+    st.markdown("#### ➕ Registrar Nuevo Atleta en el Club")
+    with st.form("form_nuevo_atleta_gest"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            n_nom = st.text_input("Nombre y Apellidos:")
+        with c2:
+            n_ali = st.text_input("Alias único:")
+        with c3:
+            n_ava = st.text_input("Iniciales Avatar (2 letras):", max_chars=3)
+        n_url = st.text_input("URL Google Doc de su plan (opcional):")
+        submit_atleta = st.form_submit_button("Dar de Alta Atleta", type="primary")
+        if submit_atleta:
+            if n_nom and n_ali:
+                database.crear_o_actualizar_usuario(
+                    nombre=n_nom.strip(),
+                    alias=n_ali.lower().strip(),
+                    rol="atleta",
+                    entrenador_id=2,
+                    avatar=n_ava.upper().strip() if n_ava else "🏃",
+                    doc_plan_url=n_url.strip() if n_url else None
+                )
+                st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
+                st.rerun()
+            else:
+                st.warning("Introduce nombre y alias.")
+
 # ==================== PESTAÑA 6: PERSONAL (DESPLEGABLE) ====================
 with tab_personal:
     col_p_sel, _ = st.columns([1.5, 2.5])
     with col_p_sel:
+        opciones_disp = [
+            "👥 Gestión de Atletas y Planes",
+            "🏆 Récords Personales (PB)",
+            "🎽 Ficha de Sesión e Historial",
+            "📥 Sincronizar Garmin",
+            "📥 Sincronizar Coros",
+            "📥 Sincronizar Strava"
+        ] if es_entrenador else [
+            "🏆 Récords Personales (PB)",
+            "🎽 Ficha de Sesión e Historial",
+            "📥 Sincronizar Garmin",
+            "📥 Sincronizar Coros",
+            "📥 Sincronizar Strava"
+        ]
         opcion_personal = st.selectbox(
-            "Seleccionar sección personal:",
-            [
-                "🏆 Récords Personales (PB)",
-                "🎽 Ficha de Sesión e Historial",
-                "📥 Sincronizar Garmin",
-                "📥 Sincronizar Coros",
-                "📥 Sincronizar Strava"
-            ],
+            "Seleccionar sección:",
+            opciones_disp,
             index=0
         )
 
     st.divider()
 
-    if opcion_personal == "🏆 Récords Personales (PB)":
+    if opcion_personal == "👥 Gestión de Atletas y Planes":
+        render_gestion_atletas()
+    elif opcion_personal == "🏆 Récords Personales (PB)":
         render_records_personales()
     elif opcion_personal == "🎽 Ficha de Sesión e Historial":
         render_historial_sesiones()
