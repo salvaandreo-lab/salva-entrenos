@@ -177,9 +177,9 @@ def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int =
 
     return plan_dias
 
-def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]]) -> Dict[str, Any]:
+def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]], usuario_id: int = 1) -> Dict[str, Any]:
     """
-    Compara el plan del entrenador contra los entrenamientos reales en la base de datos de Garmin.
+    Compara el plan del entrenador contra los entrenamientos reales en la base de datos de Garmin para un atleta específico.
     Detecta:
     - Entrenamientos cumplidos en el mismo día.
     - Entrenamientos desplazados de día (ej: tocaba el día 12 pero se hizo el día 13).
@@ -203,9 +203,9 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]]) -> Dict[str, Any]
     cursor.execute("""
         SELECT id, fecha, titulo, distancia_km, tiempo_formateado, ritmo_medio_minkm, notas_entrenador
         FROM entrenamientos
-        WHERE fecha >= ? AND fecha <= ? || ' 23:59:59'
+        WHERE usuario_id = ? AND fecha >= ? AND fecha <= ? || ' 23:59:59'
         ORDER BY fecha ASC
-    """, (fecha_min_ext, fecha_max_ext))
+    """, (usuario_id, fecha_min_ext, fecha_max_ext))
     entrenos_reales = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
