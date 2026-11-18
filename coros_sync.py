@@ -241,8 +241,8 @@ def parsear_actividad_coros(act: Dict[str, Any], detail: Optional[Dict[str, Any]
 
     return datos_entreno, laps_resultado
 
-def sincronizar_actividades_coros(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50) -> Dict[str, Any]:
-    """Descarga e importa actividades desde COROS Training Hub."""
+def sincronizar_actividades_coros(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50, usuario_id: int = 1) -> Dict[str, Any]:
+    """Descarga e importa actividades desde COROS Training Hub para un atleta específico."""
     tokens = obtener_tokens_guardados()
     if not tokens or not tokens.get("accessToken"):
         return {"status": "error", "mensaje": "No hay ninguna sesión activa de COROS. Inicia sesión primero.", "nuevos": 0}
@@ -270,7 +270,7 @@ def sincronizar_actividades_coros(progreso_callback: Optional[Callable[[int, int
 
     for idx, act in enumerate(actividades):
         act_id = str(act.get("activityId") or act.get("id") or "")
-        fit_hash = f"coros_{act_id}"
+        fit_hash = f"coros_u{usuario_id}_{act_id}"
         nombre_act = act.get("name") or act.get("activityName") or f"Actividad {act_id}"
 
         if progreso_callback:
@@ -284,7 +284,7 @@ def sincronizar_actividades_coros(progreso_callback: Optional[Callable[[int, int
         detail = consultar_detalle_actividad_coros(api_base, token, act_id, act.get("sportType", 100))
         datos_entreno, laps = parsear_actividad_coros(act, detail)
 
-        nuevo_id = database.guardar_entrenamiento(datos_entreno, laps)
+        nuevo_id = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
         if nuevo_id:
             nuevos_guardados += 1
             hashes_existentes.add(fit_hash)
