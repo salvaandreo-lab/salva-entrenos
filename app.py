@@ -837,9 +837,8 @@ total_km = stats.get("total_km", 0)
 total_entrenos = stats.get("total_entrenos", 0)
 media_km = round(total_km / max(1, total_entrenos), 1)
 
+# Enlace del plan oficial individual del atleta activo (estrictamente aislado)
 doc_url = usuario_activo.get("doc_plan_url")
-if not doc_url and es_salva:
-    doc_url = plan_entrenador.obtener_doc_url()
 
 @st.cache_data(ttl=120)
 def cargar_plan_y_comparativa(url_doc, u_id=1):
