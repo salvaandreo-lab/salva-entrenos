@@ -1263,7 +1263,7 @@ def render_tab_home_atleta():
     SELECT e.id, e.fecha, e.titulo, e.ubicacion, e.notas_entrenador
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
-    WHERE s.distancia_m >= 350 AND e.usuario_id = ?
+    WHERE s.distancia_m >= 150 AND e.usuario_id = ?
     GROUP BY e.id
     HAVING COUNT(s.id) >= 2
     ORDER BY e.fecha DESC
@@ -2930,6 +2930,57 @@ with tab_series:
             )
     else:
         st.info(f"No se han encontrado sesiones con series de {dist_sel}.")
+
+        # Si el usuario tiene cuenta de COROS conectada, ofrecer el botón de desglosar laps
+        if coros_sync.obtener_tokens_guardados(usuario_id=usuario_id) is not None:
+            st.markdown("""
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-top: 10px; margin-bottom: 12px;">
+                    <div style="font-weight: 700; color: #1E293B; margin-bottom: 4px;">💡 ¿Tienes series de esta distancia en tu reloj COROS?</div>
+                    <div style="font-size: 13px; color: #64748B;">Al sincronizar por primera vez, se importa el resumen general. Pulsa el botón inferior para que el sistema consulte a COROS el desglose detallado de laps y repeticiones de tus sesiones recientes.</div>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button("🔄 Extraer y Desglosar Laps de COROS", key=f"btn_reprocesar_coros_{dist_sel}", type="primary"):
+                with st.spinner("Consultando vueltas y series en COROS..."):
+                    res_rep = coros_sync.reprocesar_laps_actividades_existentes(usuario_id=usuario_id, limite=30)
+                if res_rep.get("actualizados", 0) > 0:
+                    st.success(f"🎉 ¡Desglosadas {res_rep['actualizados']} sesiones con series de COROS!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.info(res_rep.get("mensaje") or "No se encontraron series adicionales pendientes de desglosar.")
+
+        # Si la distancia seleccionada es 1000 mtrs y no hay series de pista, ofrecer la vista de parciales km a km
+        if dist_sel == "1000 mtrs":
+            query_splits_disp = """
+                SELECT DISTINCT e.id, e.fecha, e.titulo, e.distancia_km
+                FROM entrenamientos e
+                JOIN entrenamientos_splits_km esk ON esk.entrenamiento_id = e.id
+                WHERE e.usuario_id = ? AND (e.deporte IN ('running', 'track_running', 'trail_running') OR e.deporte IS NULL)
+                ORDER BY e.fecha DESC
+                LIMIT 20
+            """
+            ses_splits = database.ejecutar_consulta_sql(query_splits_disp, (usuario_id,))
+            if ses_splits:
+                st.markdown("---")
+                st.markdown("#### 🏃 O bien, consulta el parcial de 1.000m (Km a Km) de tus carreras:")
+                opc_splits = [f"{s['id']} | {s['fecha'][:10]} · {s['titulo']} ({s['distancia_km']} km)" for s in ses_splits]
+                sel_split_ses = st.selectbox("🔽 Seleccionar sesión para ver parciales de 1.000m:", opc_splits, key="sel_split_1k")
+                if sel_split_ses:
+                    s_id = int(sel_split_ses.split(" | ")[0])
+                    splits_raw = database.ejecutar_consulta_sql(
+                        "SELECT km_numero, distancia_m, tiempo_formateado, ritmo_minkm, fc_media, fc_max FROM entrenamientos_splits_km WHERE entrenamiento_id = ? ORDER BY km_numero ASC",
+                        (s_id,)
+                    )
+                    if splits_raw:
+                        df_sp = pd.DataFrame(splits_raw)
+                        st.dataframe(df_sp.rename(columns={
+                            "km_numero": "Km #",
+                            "distancia_m": "Metros",
+                            "tiempo_formateado": "Tiempo",
+                            "ritmo_minkm": "Ritmo",
+                            "fc_media": "FC Media",
+                            "fc_max": "FC Máx"
+                        }), use_container_width=True, hide_index=True)
 
 # ==================== COMPONENTE: SINCRONIZAR GARMIN ====================
 def render_sincronizar_garmin():
