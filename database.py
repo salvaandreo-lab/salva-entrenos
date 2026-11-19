@@ -708,17 +708,23 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
     conn = get_connection()
     cursor = conn.cursor()
 
-    if entrenador_id and entrenador_id not in (1, 2):
-        cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' AND (entrenador_id = ? OR entrenador_id IS NULL) ORDER BY nombre ASC", (entrenador_id,))
-    else:
-        cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' ORDER BY nombre ASC")
+    # Incluir a todos los atletas y a Salva, excluyendo únicamente al perfil Míster (id 2)
+    cursor.execute("""
+        SELECT * FROM usuarios 
+        WHERE (rol IN ('atleta', 'admin') OR id = 1 OR alias = 'salva')
+          AND id != 2 
+          AND (activo = 1 OR activo IS NULL)
+        ORDER BY CASE WHEN id = 1 THEN 0 ELSE 1 END, nombre ASC
+    """)
 
     atletas = [dict(r) for r in cursor.fetchall()]
     hoy = date.today()
+    hoy_str = hoy.strftime("%Y-%m-%d")
     lunes_actual = (hoy - timedelta(days=hoy.weekday())).strftime("%Y-%m-%d")
 
     total_km_equipo = 0.0
     total_entrenos_equipo = 0
+    atletas_entrenados_hoy = 0
 
     for a in atletas:
         uid = a["id"]
@@ -730,29 +736,115 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
         total_km_equipo += (r_stats[1] or 0.0)
         total_entrenos_equipo += (r_stats[0] or 0)
 
-        cursor.execute("SELECT SUM(distancia_km) FROM entrenamientos WHERE usuario_id = ? AND fecha >= ?", (uid, lunes_actual))
+        cursor.execute("SELECT SUM(distancia_km), COUNT(*) FROM entrenamientos WHERE usuario_id = ? AND fecha >= ?", (uid, lunes_actual))
         r_sem = cursor.fetchone()
         a["km_semana"] = round(r_sem[0] or 0.0, 1)
+        a["entrenos_semana"] = r_sem[1] or 0
 
-        cursor.execute("SELECT fecha, titulo, distancia_km, ritmo_medio_minkm, tiempo_formateado FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 1", (uid,))
+        # Entreno realizado hoy
+        cursor.execute("""
+            SELECT id, fecha, titulo, distancia_km, tiempo_total_s, tiempo_formateado, ritmo_medio_minkm, ubicacion, fc_media, fit_hash
+            FROM entrenamientos
+            WHERE usuario_id = ? AND fecha LIKE ?
+            ORDER BY fecha DESC LIMIT 1
+        """, (uid, f"{hoy_str}%"))
+        r_hoy = cursor.fetchone()
+        if r_hoy:
+            f_hash = (r_hoy["fit_hash"] or "").lower()
+            orig = "COROS" if "coros" in f_hash else ("Garmin" if "garmin" in f_hash else ("Strava" if "strava" in f_hash else "GPS"))
+            a["entreno_hoy"] = {
+                "id": r_hoy["id"],
+                "hecho": True,
+                "hora": r_hoy["fecha"][11:16] if len(r_hoy["fecha"]) >= 16 else "",
+                "fecha": r_hoy["fecha"],
+                "titulo": r_hoy["titulo"],
+                "km": r_hoy["distancia_km"],
+                "tiempo": r_hoy["tiempo_formateado"],
+                "ritmo": r_hoy["ritmo_medio_minkm"],
+                "fc": r_hoy["fc_media"],
+                "ubicacion": r_hoy["ubicacion"] or "",
+                "origen": orig
+            }
+            atletas_entrenados_hoy += 1
+        else:
+            a["entreno_hoy"] = None
+
+        # Último entreno histórico
+        cursor.execute("""
+            SELECT id, fecha, titulo, distancia_km, tiempo_formateado, ritmo_medio_minkm, fit_hash
+            FROM entrenamientos
+            WHERE usuario_id = ?
+            ORDER BY fecha DESC LIMIT 1
+        """, (uid,))
         r_ult = cursor.fetchone()
         if r_ult:
+            f_hash = (r_ult["fit_hash"] or "").lower()
+            orig = "COROS" if "coros" in f_hash else ("Garmin" if "garmin" in f_hash else ("Strava" if "strava" in f_hash else "GPS"))
             a["ultimo_fecha"] = r_ult["fecha"][:10]
+            a["ultimo_hora"] = r_ult["fecha"][11:16] if len(r_ult["fecha"]) >= 16 else ""
             a["ultimo_titulo"] = r_ult["titulo"]
             a["ultimo_km"] = r_ult["distancia_km"]
             a["ultimo_ritmo"] = r_ult["ritmo_medio_minkm"]
             a["ultimo_tiempo"] = r_ult["tiempo_formateado"]
+            a["ultimo_origen"] = orig
         else:
             a["ultimo_fecha"] = None
+            a["ultimo_hora"] = None
             a["ultimo_titulo"] = None
             a["ultimo_km"] = None
             a["ultimo_ritmo"] = None
             a["ultimo_tiempo"] = None
+            a["ultimo_origen"] = None
+
+        # Plan previsto para hoy
+        a["plan_hoy"] = None
+        doc_url = a.get("doc_plan_url")
+        if not doc_url and uid == 1:
+            doc_url = "https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing"
+        if doc_url:
+            try:
+                import plan_entrenador
+                p_dias = plan_entrenador.descargar_plan_entrenador(doc_url)
+                for p in p_dias:
+                    if p.get("fecha") == hoy_str:
+                        a["plan_hoy"] = {
+                            "descripcion": p.get("descripcion", ""),
+                            "titulo": p.get("titulo_sugerido", p.get("descripcion", "")),
+                            "es_descanso": p.get("es_descanso", False),
+                            "es_series": p.get("es_series", False)
+                        }
+                        break
+            except Exception:
+                pass
+
+        # Plataformas conectadas
+        plataformas = []
+        try:
+            import coros_sync
+            if coros_sync.obtener_tokens_guardados(usuario_id=uid) is not None:
+                plataformas.append("COROS")
+        except Exception:
+            pass
+        try:
+            token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
+            if (uid == 1 and os.path.isfile(os.path.join(token_dir_g, "garmin_tokens.json"))) or os.path.isdir(os.path.join(token_dir_g, f"u{uid}")) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{uid}.json")):
+                plataformas.append("Garmin")
+        except Exception:
+            pass
+        try:
+            import strava_sync
+            if strava_sync.obtener_tokens_strava(usuario_id=uid) is not None:
+                plataformas.append("Strava")
+        except Exception:
+            pass
+        a["plataformas"] = plataformas
 
     conn.close()
 
     return {
         "total_atletas": len(atletas),
+        "entrenados_hoy": atletas_entrenados_hoy,
+        "pendientes_hoy": len(atletas) - atletas_entrenados_hoy,
         "total_entrenos_equipo": total_entrenos_equipo,
         "total_km_equipo": round(total_km_equipo, 1),
         "atletas": atletas
