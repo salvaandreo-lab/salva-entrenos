@@ -26,73 +26,88 @@ REGIONS = {
 }
 
 def obtener_tokens_guardados(usuario_id: Optional[int] = None, *args, **kwargs) -> Optional[Dict[str, Any]]:
-    """Devuelve los datos de sesión de COROS para el atleta correspondiente."""
+    """Devuelve los datos de sesión de COROS para el atleta correspondiente, consultando disco y base de datos persistente."""
     uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
     if uid is None and len(args) > 0 and isinstance(args[0], int):
         uid = args[0]
+    target_uid = uid if uid is not None else 1
 
-    if uid:
-        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{uid}.json")
-        if os.path.isfile(f_user):
-            try:
-                with open(f_user, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        # Si se busca para un usuario concreto y no tiene archivo propio, comprobar si coros_tokens.json es de él
-        if os.path.isfile(COROS_TOKENS_FILE):
-            try:
-                with open(COROS_TOKENS_FILE, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                    if d.get("usuario_id") == uid:
-                        return d
-            except Exception:
-                pass
-        return None
+    os.makedirs(COROS_TOKENS_DIR, exist_ok=True)
+    f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{target_uid}.json")
 
+    # 1. Comprobar archivo específico en disco
+    if os.path.isfile(f_user):
+        try:
+            with open(f_user, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if d.get("accessToken"):
+                    return d
+        except Exception:
+            pass
+
+    # 2. Si no está en disco (reinicio de Streamlit Cloud), recuperar de SQLite permanente
+    try:
+        db_tokens = database.obtener_sesion_plataforma(target_uid, "coros")
+        if db_tokens and db_tokens.get("accessToken"):
+            # Restaurar el archivo en disco para operaciones subsiguientes
+            with open(f_user, "w", encoding="utf-8") as f:
+                json.dump(db_tokens, f, indent=2)
+            return db_tokens
+    except Exception:
+        pass
+
+    # 3. Comprobar si coros_tokens.json es de este usuario o es usuario 1
     if os.path.isfile(COROS_TOKENS_FILE):
         try:
             with open(COROS_TOKENS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                d = json.load(f)
+                if d.get("usuario_id") == target_uid or (target_uid == 1 and d.get("accessToken")):
+                    return d
         except Exception:
             pass
+
     return None
 
 def guardar_tokens_coros(data: Dict[str, Any], usuario_id: Optional[int] = None):
-    """Guarda los tokens de sesión de COROS en disco de forma estrictamente aislada por atleta."""
+    """Guarda los tokens de sesión de COROS en disco y en SQLite de forma estrictamente aislada por atleta."""
     os.makedirs(COROS_TOKENS_DIR, exist_ok=True)
-    if usuario_id:
-        data["usuario_id"] = usuario_id
-        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
-        with open(f_user, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        if usuario_id == 1:
-            with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-    else:
+    uid = usuario_id if usuario_id is not None else 1
+    data["usuario_id"] = uid
+
+    f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{uid}.json")
+    with open(f_user, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    if uid == 1:
         with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
+    # Persistir en la base de datos sporttracks.db para sobrevivir a reinicios de contenedor en Streamlit Cloud
+    try:
+        database.guardar_sesion_plataforma(uid, "coros", data)
+    except Exception as e:
+        print(f"Aviso al guardar sesión COROS en SQLite: {e}")
+
 def cerrar_sesion_coros(usuario_id: Optional[int] = None):
-    """Elimina la sesión guardada de COROS para el atleta correspondiente."""
-    if usuario_id:
-        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
-        if os.path.isfile(f_user):
-            try:
-                os.remove(f_user)
-            except Exception:
-                pass
-        if usuario_id == 1 and os.path.isfile(COROS_TOKENS_FILE):
-            try:
-                os.remove(COROS_TOKENS_FILE)
-            except Exception:
-                pass
-    else:
-        if os.path.isfile(COROS_TOKENS_FILE):
-            try:
-                os.remove(COROS_TOKENS_FILE)
-            except Exception:
-                pass
+    """Elimina la sesión guardada de COROS en disco y en SQLite para el atleta correspondiente."""
+    uid = usuario_id if usuario_id is not None else 1
+    f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{uid}.json")
+    if os.path.isfile(f_user):
+        try:
+            os.remove(f_user)
+        except Exception:
+            pass
+
+    try:
+        database.eliminar_sesion_plataforma(uid, "coros")
+    except Exception:
+        pass
+
+    if uid == 1 and os.path.isfile(COROS_TOKENS_FILE):
+        try:
+            os.remove(COROS_TOKENS_FILE)
+        except Exception:
+            pass
 
 def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu", usuario_id: Optional[int] = None) -> Tuple[bool, str, Dict[str, Any]]:
     """
@@ -635,6 +650,12 @@ def sincronizar_actividades_coros(
             database.persistir_base_datos(f"Sincronizados {nuevos_guardados} entrenos de COROS (atleta id {usuario_id}) [skip ci]")
         except Exception:
             pass
+
+    # Auto-reprocesar laps de actividades recientes o históricas que solo tengan 1 vuelta
+    try:
+        reprocesar_laps_actividades_existentes(usuario_id=usuario_id, limite=50)
+    except Exception:
+        pass
 
     modo_txt = "historial completo" if es_modo_historial else "sincronización incremental"
     return {
