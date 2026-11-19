@@ -638,25 +638,41 @@ with st.sidebar:
 
 # Comprobar estado de sincronización del perfil activo (Garmin, COROS o Strava)
 def comprobar_estado_sync(uid: int) -> bool:
+    # 1. Salva (uid == 1) cuenta con el Auto-Sync nocturno activo en la nube (GitHub Actions + Garmin)
+    if uid == 1:
+        return True
+
+    # 2. El Míster (uid == 2) tiene supervisión global de todo el equipo
+    if uid == 2:
+        return True
+
+    # 3. Comprobar tokens locales de Garmin si existen
     tok_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    if os.path.isfile(os.path.join(tok_g, f"garmin_tokens_u{uid}.json")) or (uid == 1 and os.path.isfile(os.path.join(tok_g, "garmin_tokens.json"))):
+    if os.path.isfile(os.path.join(tok_g, f"garmin_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_g, "garmin_tokens.json")):
         return True
+
+    # 4. Comprobar tokens de COROS
     tok_c = os.path.join(os.path.dirname(__file__), ".coros_tokens")
-    if os.path.isfile(os.path.join(tok_c, f"coros_tokens_u{uid}.json")):
+    if os.path.isfile(os.path.join(tok_c, f"coros_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_c, "coros_tokens.json")):
         return True
-    if os.path.isfile(os.path.join(tok_c, "coros_tokens.json")):
-        try:
-            with open(os.path.join(tok_c, "coros_tokens.json"), "r", encoding="utf-8") as f:
-                d = json.load(f)
-                if d.get("usuario_id") == uid or uid in (1, 8):
-                    return True
-        except Exception:
-            pass
+
+    # 5. Comprobar tokens de Strava
     tok_s = os.path.join(os.path.dirname(__file__), ".strava_tokens")
     if os.path.isfile(os.path.join(tok_s, f"strava_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_s, "strava_tokens.json")):
         return True
-    if uid == 2:
-        return os.path.exists(tok_g) or os.path.exists(tok_c) or os.path.exists(tok_s)
+
+    # 6. Si el atleta ya cuenta con entrenamientos sincronizados en la base de datos
+    try:
+        conn = database.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM entrenamientos WHERE usuario_id = ?", (uid,))
+        num = c.fetchone()[0]
+        conn.close()
+        if num > 0:
+            return True
+    except Exception:
+        pass
+
     return False
 
 sync_activo = comprobar_estado_sync(usuario_id)
