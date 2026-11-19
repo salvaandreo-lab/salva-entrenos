@@ -131,10 +131,12 @@ def parsear_archivo_fit(fit_file_path: str) -> Tuple[Dict[str, Any], List[Dict[s
 
 # ==================== CONEXIÓN ONLINE GARMIN CONNECT ====================
 
-def obtener_directorio_tokens(email: str = "") -> str:
-    """Devuelve la ruta del directorio de tokens para un email específico."""
+def obtener_directorio_tokens(email: str = "", usuario_id: Optional[int] = None) -> str:
+    """Devuelve la ruta del directorio de tokens para un atleta o email específico."""
     base_dir = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    if email:
+    if usuario_id and usuario_id != 1:
+        token_dir = os.path.join(base_dir, f"u{usuario_id}")
+    elif email:
         safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', email.lower().strip())
         token_dir = os.path.join(base_dir, safe_name)
     else:
@@ -142,15 +144,15 @@ def obtener_directorio_tokens(email: str = "") -> str:
     os.makedirs(token_dir, exist_ok=True)
     return token_dir
 
-def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str] = None):
+def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str] = None, usuario_id: Optional[int] = None):
     """
     Inicia sesión en Garmin Connect.
-    Soporta múltiples cuentas almacenando tokens separados por email.
+    Soporta múltiples cuentas almacenando tokens estrictamente separados por atleta o email.
     """
     from garminconnect import Garmin, GarminConnectAuthenticationError
 
     if not tokenstore_dir:
-        tokenstore_dir = obtener_directorio_tokens(email)
+        tokenstore_dir = obtener_directorio_tokens(email, usuario_id=usuario_id)
 
     client = Garmin(email, password)
     # Intentar login usando tokens guardados si existen
@@ -159,8 +161,8 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
         return client, "Conexión exitosa"
     except Exception as e:
         if not password:
-            raise Exception(f"Se requiere contraseña para iniciar sesión por primera vez con {email}: {e}")
-        raise Exception(f"No se pudo conectar a Garmin Connect ({email}): {e}")
+            raise Exception(f"Se requiere contraseña para iniciar sesión por primera vez con {email or 'este atleta'}: {e}")
+        raise Exception(f"No se pudo conectar a Garmin Connect ({email or 'este atleta'}): {e}")
 
 def calcular_splits_desde_detalles_garmin(
     client,
