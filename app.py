@@ -104,7 +104,6 @@ if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_pa
             flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
-            padding-bottom: 7vh !important;
             margin: 0 !important;
             pointer-events: none !important;
         }
@@ -115,6 +114,7 @@ if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_pa
             height: auto !important;
             object-fit: contain !important;
             background: #000000 !important;
+            transform: translateY(-2cm) !important;
         }
         div[data-testid="stVideo"] video::-webkit-media-controls {
             display: none !important;
