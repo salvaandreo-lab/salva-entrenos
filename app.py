@@ -2788,10 +2788,27 @@ with tab_series:
             "300 mtrs": (270, 330),
             "200 mtrs": (170, 230),
         }
+        dist_keys = list(distancia_opciones.keys())
+        # Selección inteligente: si hoy había series prescritas de 300m o 400m, preseleccionar esa distancia
+        idx_def = 3 # 1000 mtrs por defecto
+        hoy_str = datetime.now().strftime("%Y-%m-%d")
+        for p in (comparativa_plan or []):
+            if p.get("fecha") == hoy_str:
+                tit_desc = f"{p.get('titulo_sugerido', '')} {p.get('plan_descripcion', '')}".lower()
+                if "300" in tit_desc and "300 mtrs" in dist_keys:
+                    idx_def = dist_keys.index("300 mtrs")
+                elif "400" in tit_desc and "400 mtrs" in dist_keys:
+                    idx_def = dist_keys.index("400 mtrs")
+                elif "500" in tit_desc and "500 mtrs" in dist_keys:
+                    idx_def = dist_keys.index("500 mtrs")
+                elif "2000" in tit_desc and "2000 mtrs" in dist_keys:
+                    idx_def = dist_keys.index("2000 mtrs")
+                break
+
         dist_sel = st.selectbox(
             "🔽 Seleccionar distancia de serie:",
-            list(distancia_opciones.keys()),
-            index=3
+            dist_keys,
+            index=idx_def
         )
         d_min, d_max = distancia_opciones[dist_sel]
 
