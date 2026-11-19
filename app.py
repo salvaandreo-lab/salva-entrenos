@@ -538,7 +538,8 @@ if marcas_conectadas:
     dispositivo_txt = " · ".join(marcas_conectadas)
     pill_device_html = f"<span>⌚ {dispositivo_txt}</span><span style='color: #64748B;'>|</span><span style='color: #10B981; font-weight: 700;'>● Conectado</span>"
 else:
-    pill_device_html = "<span>⌚ Dispositivo</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
+    plat_pref_tag = (usuario_activo.get("plataforma_principal") or "Dispositivo").upper()
+    pill_device_html = f"<span>⌚ {plat_pref_tag}</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
 
 def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None) -> Tuple[int, int, str]:
     """
@@ -1304,8 +1305,10 @@ def render_tab_home_atleta():
     with c_hdr_es:
         st.markdown("<div style='margin-bottom: 8px; font-size: 13px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.8px; padding-top: 8px;'>⚡ Lo Esencial</div>", unsafe_allow_html=True)
     with c_hdr_sync:
-        if st.button("🔄 Sincronizar", key="btn_sync_inicio", type="primary", use_container_width=True):
-            with st.spinner("Sincronizando entrenamientos..."):
+        plat_u = usuario_activo.get("plataforma_principal", "garmin")
+        lbl_sync = "🔄 Sincronizar COROS" if (plat_u == "coros" or tiene_coros) else ("🔄 Sincronizar Garmin" if (plat_u == "garmin" or tiene_garmin) else "🔄 Sincronizar Strava")
+        if st.button(lbl_sync, key="btn_sync_inicio", type="primary", use_container_width=True):
+            with st.spinner(f"Sincronizando {lbl_sync.replace('🔄 Sincronizar ', '')}..."):
                 nuevas, omitidas, detalle = sincronizar_actividades_todas()
             if nuevas > 0:
                 st.success(f"🎉 ¡Sincronizado! **{nuevas}** nuevos entrenamientos ({detalle}).")
@@ -3347,10 +3350,20 @@ def render_gestion_atletas():
                         value=at.get("doc_plan_url") or "",
                         key=f"doc_url_atleta_{at['id']}"
                     )
+                    plat_actual = (at.get("plataforma_principal") or ("coros" if "jose" in at["alias"].lower() else "garmin")).lower()
+                    opciones_plat = ["coros", "garmin", "strava"]
+                    idx_plat = opciones_plat.index(plat_actual) if plat_actual in opciones_plat else 0
+                    nueva_plat = st.selectbox(
+                        f"Dispositivo / Reloj principal de {at['nombre']}:",
+                        options=opciones_plat,
+                        index=idx_plat,
+                        format_func=lambda x: "⌚ COROS (Training Hub)" if x == "coros" else ("⌚ Garmin (Connect)" if x == "garmin" else "🚴 Strava"),
+                        key=f"plat_atleta_{at['id']}"
+                    )
                 with col_u2:
                     st.write("")
                     st.write("")
-                    if st.button("💾 Guardar URL", key=f"btn_save_doc_{at['id']}"):
+                    if st.button("💾 Guardar Cambios", key=f"btn_save_doc_{at['id']}"):
                         database.crear_o_actualizar_usuario(
                             nombre=at["nombre"],
                             alias=at["alias"],
@@ -3359,9 +3372,10 @@ def render_gestion_atletas():
                             email=at.get("email"),
                             avatar=at.get("avatar"),
                             doc_plan_url=nuevo_doc.strip() if nuevo_doc else None,
+                            plataforma_principal=nueva_plat,
                             usuario_id=at["id"]
                         )
-                        st.success(f"Plan de {at['nombre']} actualizado.")
+                        st.success(f"Datos de {at['nombre']} actualizados.")
                         st.rerun()
 
                 if es_salva and at["id"] not in (1, 2):
@@ -3383,7 +3397,16 @@ def render_gestion_atletas():
                 n_ali = st.text_input("Alias único:")
             with c3:
                 n_ava = st.text_input("Iniciales Avatar (2 letras):", max_chars=3)
-            n_url = st.text_input("URL Google Doc de su plan (opcional):")
+            col_f_plat, col_f_doc = st.columns([1, 2])
+            with col_f_plat:
+                n_plat = st.selectbox(
+                    "Reloj / Dispositivo principal:",
+                    options=["coros", "garmin", "strava"],
+                    index=0,
+                    format_func=lambda x: "⌚ COROS" if x == "coros" else ("⌚ Garmin" if x == "garmin" else "🚴 Strava")
+                )
+            with col_f_doc:
+                n_url = st.text_input("URL Google Doc de su plan (opcional):")
             submit_atleta = st.form_submit_button("Dar de Alta Atleta", type="primary")
             if submit_atleta:
                 if n_nom and n_ali:
@@ -3397,10 +3420,11 @@ def render_gestion_atletas():
                             rol="atleta",
                             entrenador_id=2,
                             avatar=n_ava.upper().strip() if n_ava else "🏃",
-                            doc_plan_url=n_url.strip() if n_url else None
+                            doc_plan_url=n_url.strip() if n_url else None,
+                            plataforma_principal=n_plat
                         )
                         st.session_state["usuario_id_activo"] = nuevo_id
-                        st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
+                        st.success(f"Atleta '{n_nom}' añadido con éxito al equipo ({n_plat.upper()}).")
                         st.rerun()
                 else:
                     st.warning("Introduce nombre y alias.")
@@ -3411,22 +3435,36 @@ def render_gestion_atletas():
 with tab_personal:
     col_p_sel, _ = st.columns([1.5, 2.5])
     with col_p_sel:
-        opciones_disp = [
-            "👥 Gestión de Atletas y Planes",
-            "🏆 Récords Personales (PB)",
-            "📥 Sincronizar Garmin",
-            "📥 Sincronizar Coros",
-            "📥 Sincronizar Strava"
-        ] if (es_entrenador or es_salva) else [
-            "🏆 Récords Personales (PB)",
-            "📥 Sincronizar Garmin",
-            "📥 Sincronizar Coros",
-            "📥 Sincronizar Strava"
-        ]
+        plat_pref = (usuario_activo.get("plataforma_principal") or ("coros" if "jose" in usuario_activo.get("alias", "") else "garmin")).lower()
+        if (es_entrenador or es_salva):
+            opciones_disp = [
+                "👥 Gestión de Atletas y Planes",
+                "🏆 Récords Personales (PB)",
+                "📥 Sincronizar Garmin",
+                "📥 Sincronizar Coros",
+                "📥 Sincronizar Strava"
+            ]
+            idx_p = 0
+        else:
+            if plat_pref == "coros":
+                opciones_disp = [
+                    "📥 Sincronizar Coros",
+                    "🏆 Récords Personales (PB)",
+                    "📥 Sincronizar Strava",
+                    "📥 Sincronizar Garmin"
+                ]
+            else:
+                opciones_disp = [
+                    "🏆 Récords Personales (PB)",
+                    "📥 Sincronizar Garmin",
+                    "📥 Sincronizar Coros",
+                    "📥 Sincronizar Strava"
+                ]
+            idx_p = 0
         opcion_personal = st.selectbox(
             "🔽 Seleccionar sección:",
             opciones_disp,
-            index=0
+            index=idx_p
         )
 
     st.divider()
