@@ -1289,14 +1289,57 @@ def render_tab_home_atleta():
         tit_series = p_match_s[0]["titulo_sugerido"] if p_match_s else f"Series {len(laps_s_solo)}x{s_resumen.get('distancia_aprox', 1000)}m"
         f_series = ult_sesion_series[0]["fecha"][:10]
         ub_series = ult_sesion_series[0].get("ubicacion") or "Alcantarilla"
-        n_series = len(laps_s_solo) if laps_s_solo else s_resumen.get("num_series", 0)
         
+        # Agrupación inteligente de series (detectar sesiones mixtas como 8x300m + 1x1000m)
+        dist_grupos = {}
+        for l in laps_s_solo:
+            dm = float(l.get("distancia_m", 0))
+            if 850 <= dm <= 1150:
+                d_label = "1000m"
+            elif 1850 <= dm <= 2150:
+                d_label = "2000m"
+            elif 250 <= dm <= 350:
+                d_label = "300m"
+            elif 370 <= dm <= 430:
+                d_label = "400m"
+            elif 470 <= dm <= 530:
+                d_label = "500m"
+            else:
+                d_label = f"{int(round(dm/50)*50)}m"
+            dist_grupos[d_label] = dist_grupos.get(d_label, 0) + 1
+
+        n_series_txt = " + ".join(f"{cnt}x{lbl}" for lbl, cnt in dist_grupos.items()) if len(dist_grupos) > 1 else f"{len(laps_s_solo)} series"
+        n_series = len(laps_s_solo) if laps_s_solo else s_resumen.get("num_series", 0)
+
+        # Métricas adaptadas: si es mixta, mostrar mejor de la serie corta y tiempo de la serie larga
+        es_mixta = len(dist_grupos) > 1
+        sub_met1_lbl, sub_met1_val = "⚡ Media Series", "--"
+        sub_met2_lbl, sub_met2_val = "⏱️ Recuperación", "1' pausa"
+
         if laps_s_solo:
             t_laps = [l["tiempo_s"] for l in laps_s_solo if l.get("tiempo_s")]
             mejor_t_s = min(t_laps) if t_laps else 0
             media_t_s = sum(t_laps) / len(t_laps) if t_laps else 0
             mejor_serie_str = f"{int(mejor_t_s // 60)}:{int(mejor_t_s % 60):02d}"
             media_serie_str = f"{int(media_t_s // 60)}:{int(media_t_s % 60):02d}"
+
+            if es_mixta:
+                # Ordenar grupos por distancia
+                gr_keys = sorted(dist_grupos.keys(), key=lambda x: int(re.sub(r'\D', '', x)))
+                g_corta, g_larga = gr_keys[0], gr_keys[-1]
+                laps_corta = [l for l in laps_s_solo if g_corta in f"{int(round(float(l.get('distancia_m', 0))))}m" or (g_corta == "300m" and 250 <= float(l.get("distancia_m", 0)) <= 350)]
+                laps_larga = [l for l in laps_s_solo if g_larga in f"{int(round(float(l.get('distancia_m', 0))))}m" or (g_larga == "1000m" and 850 <= float(l.get("distancia_m", 0)) <= 1150)]
+                if laps_corta:
+                    t_c = min([l["tiempo_s"] for l in laps_corta])
+                    sub_met1_lbl = f"⚡ Mejor {g_corta}"
+                    sub_met1_val = f"{int(t_c // 60):02d}:{int(t_c % 60):02d}"
+                if laps_larga:
+                    t_l = laps_larga[0]["tiempo_s"]
+                    sub_met2_lbl = f"⚡ Serie {g_larga}"
+                    sub_met2_val = f"{int(t_l // 60):02d}:{int(t_l % 60):02d}"
+            else:
+                sub_met1_lbl = "⚡ Media Series"
+                sub_met1_val = f"{media_serie_str} min"
         else:
             mejor_serie_str = "--:--"
             media_serie_str = "--:--"
@@ -1440,7 +1483,7 @@ def render_tab_home_atleta():
             <div class="garmin-card" style="padding: 16px; margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Último Día de Series</span>
-                    <span class="garmin-badge-blue">{n_series} series</span>
+                    <span class="garmin-badge-blue">{n_series_txt}</span>
                 </div>
                 <div style="font-size: 17px; font-weight: 800; color: #181C20; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     {tit_series}
@@ -1453,12 +1496,12 @@ def render_tab_home_atleta():
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; background: #F8FAFC; padding: 10px 12px; border-radius: 8px; border: 1px solid #E2E8F0;">
                     <div>
-                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⚡ Media Series</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{media_serie_str} <span style="font-size: 10px; font-weight: normal; color: #64748B;">min</span></div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">{sub_met1_lbl}</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{sub_met1_val}</div>
                     </div>
                     <div>
-                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">⏱️ Recuperación</div>
-                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">1' <span style="font-size: 10px; font-weight: normal; color: #64748B;">pausa</span></div>
+                        <div style="font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase;">{sub_met2_lbl}</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #181C20;">{sub_met2_val}</div>
                     </div>
                 </div>
             </div>
@@ -2822,7 +2865,7 @@ with tab_series:
         JOIN series_laps s ON s.entrenamiento_id = e.id
         WHERE e.usuario_id = ?
         GROUP BY dk, e.id
-        HAVING dk IS NOT NULL AND COUNT(s.id) >= 2
+        HAVING dk IS NOT NULL AND COUNT(s.id) >= 1
         """
         rows_counts = database.ejecutar_consulta_sql(q_dist_counts, (usuario_id,))
         dist_counts = {}
@@ -2898,7 +2941,7 @@ with tab_series:
     JOIN series_laps s ON s.entrenamiento_id = e.id
     WHERE s.distancia_m BETWEEN {d_min} AND {d_max} {pace_filter} AND e.usuario_id = ?
     GROUP BY e.id
-    HAVING COUNT(s.id) >= 2
+    HAVING COUNT(s.id) >= 1
     ORDER BY e.fecha DESC
     """
     sesiones_series_raw = database.ejecutar_consulta_sql(query_sesiones, (usuario_id,))
@@ -2914,7 +2957,8 @@ with tab_series:
             for s in sesiones_series:
                 p_match = [p for p in comparativa_plan if p.get("fecha") == s["fecha"][:10]]
                 tit_amigable = p_match[0]["titulo_sugerido"] if p_match else s["titulo"]
-                opciones_sesion.append(f"{s['id']} | {s['fecha'][:10]} · {tit_amigable} ({s['num_series']} series)")
+                lbl_cnt = f"{s['num_series']} serie" if s['num_series'] == 1 else f"{s['num_series']} series"
+                opciones_sesion.append(f"{s['id']} | {s['fecha'][:10]} · {tit_amigable} ({lbl_cnt})")
 
             sel_sesion_str = st.selectbox(
                 "🔽 Seleccionar sesión concreta de series:",
@@ -3001,6 +3045,22 @@ with tab_series:
                 )
             )
             st.plotly_chart(fig_series, use_container_width=True, theme=None)
+
+            # Comprobar si esta misma sesión incluye series adicionales de otra distancia (ej: bloque mixto 8x300m + 1x1000m)
+            query_otras_laps = f"""
+            SELECT lap_numero, distancia_m, tiempo_s, tiempo_formateado, ritmo_minkm, fc_media
+            FROM series_laps
+            WHERE entrenamiento_id = {sesion_id} AND (distancia_m < {d_min} OR distancia_m > {d_max})
+              AND (
+                (distancia_m BETWEEN 160 AND 4500 AND (tiempo_s / (distancia_m / 1000.0)) <= 280)
+                OR (distancia_m BETWEEN 850 AND 1150 AND (tiempo_s / (distancia_m / 1000.0)) <= 260)
+              )
+            ORDER BY lap_numero ASC
+            """
+            otras_series_laps = database.ejecutar_consulta_sql(query_otras_laps)
+            if otras_series_laps:
+                otras_txt = " · ".join([f"**Vuelta #{l['lap_numero']}**: {int(round(l['distancia_m']))}m en **{l['tiempo_formateado']}** (@{l['ritmo_minkm']} min/km)" for l in otras_series_laps])
+                st.info(f"⚡ **Serie(s) combinada(s) adicional(es) en esta misma sesión:** {otras_txt}")
 
             # Tabla con las series
             st.dataframe(
