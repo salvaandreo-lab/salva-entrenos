@@ -92,14 +92,33 @@ def generar_titulo_amigable(texto_plan: str) -> str:
             return (match_carrera.group(1) or match_carrera.group(2)).strip().strip('“”"')
         return "Competición"
 
-    # Caso Series (ej: 8x1000, 15x400, 5x2000) usando límites de palabra
+    # Caso Series (ej: 8x1000, 15x400, 5x2000, 8x300 + 1000m) usando límites de palabra
     match_series = re.search(r'\b(\d+\s*x\s*\d+m?)\b\s*(?:Rec\s*([0-9’"”\s]+))?', t, re.IGNORECASE)
     if match_series:
         serie_name = match_series.group(1).replace(' ', '')
         rec = match_series.group(2).strip() if match_series.group(2) else ""
-        if rec:
-            return f"Series {serie_name} (Rec {rec})"
-        return f"Series {serie_name}"
+
+        # Comprobar si hay una serie o bloque adicional posterior (ej: 1000m @ 3.30, + 1x1000, + 1000m)
+        pos_fin = match_series.end()
+        resto = t[pos_fin:]
+        m_extra = re.search(r'(?:[\+\n\r]+|\brec\s+[^\n\r]+[\n\r]+)\s*(?:(\d+\s*x\s*\d+m?)|(\b\d{3,4}\s*m?\b))\s*(?:@\s*([0-9\.:]+))?', resto, re.IGNORECASE)
+        extra = ""
+        if m_extra:
+            cand = m_extra.group(1) or m_extra.group(2)
+            if cand and not any(cand.strip().lower().startswith(x) for x in ['km', 'kms', 'min', 'seg', 'z']):
+                cd = cand.strip()
+                if not cd.endswith('m') and 'x' not in cd:
+                    cd += 'm'
+                extra = f" + {cd}"
+                if m_extra.group(3):
+                    extra += f" @{m_extra.group(3)}"
+
+        base = f"Series {serie_name}"
+        if rec and not extra:
+            return f"{base} (Rec {rec})"
+        elif extra:
+            return f"{base}{extra}"
+        return base
 
     # Caso Long Run / Tirada Larga
     if "LONG RUN" in t.upper() or "TIRADA" in t.upper():
