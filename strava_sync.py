@@ -12,8 +12,24 @@ from garmin_sync import segundos_a_formato, calcular_ritmo
 STRAVA_TOKENS_DIR = os.path.join(os.path.dirname(__file__), ".strava_tokens")
 STRAVA_TOKENS_FILE = os.path.join(STRAVA_TOKENS_DIR, "strava_tokens.json")
 
-def obtener_tokens_strava() -> Optional[Dict[str, Any]]:
-    """Devuelve los datos de conexión de Strava si existen."""
+def obtener_tokens_strava(usuario_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Devuelve los datos de conexión de Strava para el atleta correspondiente."""
+    if usuario_id:
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+        if os.path.isfile(f_user):
+            try:
+                with open(f_user, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        if usuario_id == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
+            try:
+                with open(STRAVA_TOKENS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return None
+
     if os.path.isfile(STRAVA_TOKENS_FILE):
         try:
             with open(STRAVA_TOKENS_FILE, "r", encoding="utf-8") as f:
@@ -22,21 +38,43 @@ def obtener_tokens_strava() -> Optional[Dict[str, Any]]:
             pass
     return None
 
-def guardar_tokens_strava(data: Dict[str, Any]):
-    """Guarda los tokens de Strava en disco."""
+def guardar_tokens_strava(data: Dict[str, Any], usuario_id: Optional[int] = None):
+    """Guarda los tokens de Strava en disco de forma aislada por atleta."""
     os.makedirs(STRAVA_TOKENS_DIR, exist_ok=True)
-    with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    if usuario_id:
+        data["usuario_id"] = usuario_id
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+        with open(f_user, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        if usuario_id == 1:
+            with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+    else:
+        with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
-def cerrar_sesion_strava():
-    """Elimina la conexión guardada con Strava."""
-    if os.path.isfile(STRAVA_TOKENS_FILE):
-        try:
-            os.remove(STRAVA_TOKENS_FILE)
-        except Exception:
-            pass
+def cerrar_sesion_strava(usuario_id: Optional[int] = None):
+    """Elimina la conexión guardada con Strava para el atleta especificado."""
+    if usuario_id:
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+        if os.path.isfile(f_user):
+            try:
+                os.remove(f_user)
+            except Exception:
+                pass
+        if usuario_id == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
+            try:
+                os.remove(STRAVA_TOKENS_FILE)
+            except Exception:
+                pass
+    else:
+        if os.path.isfile(STRAVA_TOKENS_FILE):
+            try:
+                os.remove(STRAVA_TOKENS_FILE)
+            except Exception:
+                pass
 
-def refrescar_token_strava(client_id: str, client_secret: str, refresh_token: str) -> Tuple[bool, str, Dict[str, Any]]:
+def refrescar_token_strava(client_id: str, client_secret: str, refresh_token: str, usuario_id: int = 1) -> Tuple[bool, str, Dict[str, Any]]:
     """Refresca el token OAuth de Strava expirado."""
     url = "https://www.strava.com/oauth/token"
     payload = urllib.parse.urlencode({
@@ -58,14 +96,15 @@ def refrescar_token_strava(client_id: str, client_secret: str, refresh_token: st
             "client_id": client_id,
             "client_secret": client_secret,
             "athlete": data.get("athlete", {}),
+            "usuario_id": usuario_id,
             "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        guardar_tokens_strava(token_info)
+        guardar_tokens_strava(token_info, usuario_id=usuario_id)
         return True, "Token de Strava refrescado con éxito.", token_info
     except Exception as e:
         return False, f"Error al refrescar token de Strava: {e}", {}
 
-def conectar_strava_token_directo(access_token: str, athlete_name: str = "Atleta Strava") -> Tuple[bool, str, Dict[str, Any]]:
+def conectar_strava_token_directo(access_token: str, athlete_name: str = "Atleta Strava", usuario_id: int = 1) -> Tuple[bool, str, Dict[str, Any]]:
     """Conecta con Strava utilizando un Token de Acceso personal."""
     access_token = access_token.strip()
     if not access_token:
@@ -88,19 +127,20 @@ def conectar_strava_token_directo(access_token: str, athlete_name: str = "Atleta
             "athlete_name": nombre,
             "athlete_id": athlete_data.get("id"),
             "athlete": athlete_data,
+            "usuario_id": usuario_id,
             "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        guardar_tokens_strava(token_info)
+        guardar_tokens_strava(token_info, usuario_id=usuario_id)
         return True, f"¡Conectado con éxito a Strava! Atleta: {nombre}", token_info
     except urllib.error.HTTPError as e:
         return False, f"Token no válido o sin permisos (HTTP {e.code}).", {}
     except Exception as e:
         return False, f"Error al conectar con Strava: {e}", {}
 
-def parsear_actividad_strava(act: Dict[str, Any], laps: List[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    """Convierte una actividad de Strava al formato estándar de SportTracks."""
+def parsear_actividad_strava(act: Dict[str, Any], laps: List[Dict[str, Any]] = None, usuario_id: int = 1) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Convierte una actividad de Strava al formato estándar de SportTracks para un atleta concreto."""
     act_id = str(act.get("id", ""))
-    fit_hash = f"strava_{act_id}"
+    fit_hash = f"strava_u{usuario_id}_{act_id}"
 
     # Fecha ISO a YYYY-MM-DD HH:MM:SS
     start_date_raw = act.get("start_date_local") or act.get("start_date") or ""
@@ -170,9 +210,9 @@ def parsear_actividad_strava(act: Dict[str, Any], laps: List[Dict[str, Any]] = N
 
 def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50, usuario_id: int = 1) -> Dict[str, Any]:
     """Descarga e importa actividades desde la API de Strava para un atleta específico."""
-    token_info = obtener_tokens_strava()
+    token_info = obtener_tokens_strava(usuario_id=usuario_id)
     if not token_info or not token_info.get("access_token"):
-        return {"status": "error", "mensaje": "No hay ningún token o sesión activa de Strava.", "nuevos": 0}
+        return {"status": "error", "mensaje": "No hay ningún token o sesión activa de Strava para este atleta.", "nuevos": 0}
 
     access_token = token_info["access_token"]
     headers = {
@@ -189,7 +229,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
     except urllib.error.HTTPError as e:
         # Comprobar si el token expiró y tenemos refresh_token
         if e.code == 401 and token_info.get("refresh_token") and token_info.get("client_id"):
-            exito, _, new_info = refrescar_token_strava(token_info["client_id"], token_info["client_secret"], token_info["refresh_token"])
+            exito, _, new_info = refrescar_token_strava(token_info["client_id"], token_info["client_secret"], token_info["refresh_token"], usuario_id=usuario_id)
             if exito:
                 return sincronizar_actividades_strava(progreso_callback, max_actividades, usuario_id=usuario_id)
         return {"status": "error", "mensaje": f"Error de autenticación Strava (HTTP {e.code}).", "nuevos": 0}
@@ -205,7 +245,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
 
     conn = database.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT fit_hash FROM entrenamientos WHERE fit_hash IS NOT NULL")
+    cursor.execute("SELECT fit_hash FROM entrenamientos WHERE usuario_id = ? AND fit_hash IS NOT NULL", (usuario_id,))
     hashes_existentes = set(r[0] for r in cursor.fetchall())
     conn.close()
 
@@ -231,7 +271,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
         except Exception:
             pass
 
-        datos_entreno, laps_entreno = parsear_actividad_strava(act, laps)
+        datos_entreno, laps_entreno = parsear_actividad_strava(act, laps, usuario_id=usuario_id)
         nid = database.guardar_entrenamiento(datos_entreno, laps_entreno, usuario_id=usuario_id)
         if nid:
             nuevos += 1
@@ -264,7 +304,7 @@ def sincronizar_actividades_strava(progreso_callback: Optional[Callable[[int, in
                     pass
 
     token_info["last_sync"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    guardar_tokens_strava(token_info)
+    guardar_tokens_strava(token_info, usuario_id=usuario_id)
 
     return {
         "status": "ok",
