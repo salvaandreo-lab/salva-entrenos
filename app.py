@@ -59,28 +59,49 @@ components.html(
     width=0
 )
 
-# Video Intro Splash Screen (se muestra una única vez al iniciar la aplicación)
+# Video Intro Splash Screen (se muestra a pantalla completa durante 5 segundos)
 v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
 if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_path):
     st.session_state["splash_intro_mostrada"] = True
     intro_ph = st.empty()
     with intro_ph.container():
         st.markdown("""
-        <div style="text-align: center; padding: 35px 0 16px 0;">
-            <div style="font-size: 30px; font-weight: 900; color: #0F172A; letter-spacing: -0.5px;">
-                🐎 TEAM ARDIL <span style="color: #007CC3;">AI</span>
-            </div>
-            <div style="font-size: 13.5px; color: #64748B; margin-top: 5px; font-weight: 500;">
-                Plataforma de Atletismo y Alto Rendimiento
-            </div>
-        </div>
+        <style>
+        /* Ocultar elementos de Streamlit durante la intro */
+        [data-testid="stSidebar"],
+        header[data-testid="stHeader"],
+        footer,
+        .stDeployButton {
+            display: none !important;
+        }
+        .main .block-container {
+            padding: 0 !important;
+            max-width: 100vw !important;
+            margin: 0 !important;
+        }
+        div[data-testid="stVideo"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 99999999 !important;
+            background: #000000 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        div[data-testid="stVideo"] video {
+            width: 100vw !important;
+            height: 100vh !important;
+            object-fit: cover !important;
+            background: #000000 !important;
+        }
+        </style>
         """, unsafe_allow_html=True)
 
-        _, col_v, _ = st.columns([1, 2.4, 1])
-        with col_v:
-            st.video(v_intro_path, autoplay=True, muted=True, end_time=4)
-
-        time.sleep(3.8)
+        st.video(v_intro_path, autoplay=True, muted=True)
+        time.sleep(5.0)
     intro_ph.empty()
     st.rerun()
 
