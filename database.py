@@ -105,7 +105,7 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         usuarios_seed = [
-            (1, 'Salva Andreo', 'salva', 'atleta', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
+            (1, 'Salva Andreo', 'salva', 'admin', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
             (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
             (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None),
             (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', None)
@@ -702,7 +702,7 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
     conn = get_connection()
     cursor = conn.cursor()
 
-    if entrenador_id:
+    if entrenador_id and entrenador_id not in (1, 2):
         cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' AND (entrenador_id = ? OR entrenador_id IS NULL) ORDER BY nombre ASC", (entrenador_id,))
     else:
         cursor.execute("SELECT * FROM usuarios WHERE rol = 'atleta' ORDER BY nombre ASC")
