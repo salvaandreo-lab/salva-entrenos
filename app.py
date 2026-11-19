@@ -2302,7 +2302,9 @@ def render_historial_sesiones():
         lista_atlet = database.obtener_usuarios(filtro_rol="atleta")
         if lista_atlet:
             nom_map = {f"{a['nombre']} ({a['alias']})": a["id"] for a in lista_atlet}
-            nom_sel = st.selectbox("🔽 Seleccionar atleta para consultar su historial:", list(nom_map.keys()), index=0)
+            ids_lista = list(nom_map.values())
+            idx_def = ids_lista.index(usuario_id) if usuario_id in ids_lista else 0
+            nom_sel = st.selectbox("🔽 Seleccionar atleta para consultar su historial:", list(nom_map.keys()), index=idx_def)
             target_uid = nom_map[nom_sel]
 
     entrenos_raw = database.ejecutar_consulta_sql("SELECT * FROM entrenamientos WHERE usuario_id = ? ORDER BY fecha DESC", (target_uid,))
