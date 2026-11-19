@@ -55,17 +55,22 @@ def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[
     return None
 
 def guardar_tokens_coros(data: Dict[str, Any], usuario_id: Optional[int] = None):
-    """Guarda los tokens de sesión de COROS en disco."""
+    """Guarda los tokens de sesión de COROS en disco de forma estrictamente aislada por atleta."""
     os.makedirs(COROS_TOKENS_DIR, exist_ok=True)
-    with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
     if usuario_id:
+        data["usuario_id"] = usuario_id
         f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
         with open(f_user, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+        if usuario_id == 1:
+            with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+    else:
+        with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
 def cerrar_sesion_coros(usuario_id: Optional[int] = None):
-    """Elimina la sesión guardada de COROS."""
+    """Elimina la sesión guardada de COROS para el atleta correspondiente."""
     if usuario_id:
         f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
         if os.path.isfile(f_user):
@@ -73,11 +78,17 @@ def cerrar_sesion_coros(usuario_id: Optional[int] = None):
                 os.remove(f_user)
             except Exception:
                 pass
-    if os.path.isfile(COROS_TOKENS_FILE):
-        try:
-            os.remove(COROS_TOKENS_FILE)
-        except Exception:
-            pass
+        if usuario_id == 1 and os.path.isfile(COROS_TOKENS_FILE):
+            try:
+                os.remove(COROS_TOKENS_FILE)
+            except Exception:
+                pass
+    else:
+        if os.path.isfile(COROS_TOKENS_FILE):
+            try:
+                os.remove(COROS_TOKENS_FILE)
+            except Exception:
+                pass
 
 def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu", usuario_id: Optional[int] = None) -> Tuple[bool, str, Dict[str, Any]]:
     """
