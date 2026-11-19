@@ -59,102 +59,30 @@ components.html(
     width=0
 )
 
-# Video Intro Splash Screen (se muestra una única vez por sesión de navegador)
-@st.cache_data
-def obtener_video_intro_b64() -> Optional[str]:
-    v_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
-    if os.path.isfile(v_path):
-        try:
-            with open(v_path, "rb") as vf:
-                return base64.b64encode(vf.read()).decode("utf-8")
-        except Exception:
-            return None
-    return None
+# Video Intro Splash Screen (se muestra una única vez al iniciar la aplicación)
+v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
+if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_path):
+    st.session_state["splash_intro_mostrada"] = True
+    intro_ph = st.empty()
+    with intro_ph.container():
+        st.markdown("""
+        <div style="text-align: center; padding: 35px 0 16px 0;">
+            <div style="font-size: 30px; font-weight: 900; color: #0F172A; letter-spacing: -0.5px;">
+                🐎 TEAM ARDIL <span style="color: #007CC3;">AI</span>
+            </div>
+            <div style="font-size: 13.5px; color: #64748B; margin-top: 5px; font-weight: 500;">
+                Plataforma de Atletismo y Alto Rendimiento
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-if "splash_intro_shown" not in st.session_state:
-    st.session_state["splash_intro_shown"] = True
-    _intro_b64 = obtener_video_intro_b64()
-    if _intro_b64:
-        components.html(
-            f"""
-            <script>
-            (function() {{
-                try {{
-                    const doc = window.parent.document;
-                    if (!doc) return;
-                    if (window.parent.sessionStorage.getItem("ardil_splash_played")) {{
-                        return;
-                    }}
-                    window.parent.sessionStorage.setItem("ardil_splash_played", "1");
+        _, col_v, _ = st.columns([1, 2.4, 1])
+        with col_v:
+            st.video(v_intro_path, autoplay=True, muted=True, end_time=4)
 
-                    const overlay = doc.createElement("div");
-                    overlay.id = "ardil-splash-overlay";
-                    overlay.style.cssText = "position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #070B14; z-index: 999999999; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 1; transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer;";
-
-                    const card = doc.createElement("div");
-                    card.style.cssText = "display: flex; flex-direction: column; align-items: center; max-width: 92vw; max-height: 90vh;";
-
-                    const video = doc.createElement("video");
-                    video.autoplay = true;
-                    video.muted = true;
-                    video.playsInline = true;
-                    video.setAttribute("playsinline", "");
-                    video.setAttribute("webkit-playsinline", "");
-                    video.src = "data:video/mp4;base64,{_intro_b64}";
-                    video.style.cssText = "max-width: 88vw; max-height: 76vh; border-radius: 20px; box-shadow: 0 25px 70px rgba(0, 124, 195, 0.45), 0 0 120px rgba(0, 0, 0, 0.9); border: 1px solid rgba(255, 255, 255, 0.15); object-fit: contain;";
-
-                    const bottomBar = doc.createElement("div");
-                    bottomBar.style.cssText = "display: flex; align-items: center; gap: 16px; margin-top: 18px;";
-
-                    const brand = doc.createElement("div");
-                    brand.innerHTML = "🐎 <span style='letter-spacing: 1.5px; font-weight: 800; color: #FFFFFF;'>TEAM ARDIL</span> <span style='color: #007CC3; font-weight: 700;'>AI</span>";
-                    brand.style.cssText = "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #E2E8F0;";
-
-                    const skipBtn = doc.createElement("button");
-                    skipBtn.innerText = "Entrar ⏩";
-                    skipBtn.style.cssText = "background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25); color: white; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.2s ease;";
-                    skipBtn.onmouseover = function() {{ skipBtn.style.background = 'rgba(0, 124, 195, 0.6)'; }};
-                    skipBtn.onmouseout = function() {{ skipBtn.style.background = 'rgba(255, 255, 255, 0.12)'; }};
-
-                    bottomBar.appendChild(brand);
-                    bottomBar.appendChild(skipBtn);
-                    card.appendChild(video);
-                    card.appendChild(bottomBar);
-                    overlay.appendChild(card);
-
-                    function removeOverlay() {{
-                        if (!overlay.parentNode) return;
-                        overlay.style.opacity = "0";
-                        setTimeout(function() {{
-                            if (overlay.parentNode) {{
-                                overlay.parentNode.removeChild(overlay);
-                            }}
-                        }}, 700);
-                    }}
-
-                    skipBtn.onclick = function(e) {{
-                        e.stopPropagation();
-                        removeOverlay();
-                    }};
-                    overlay.onclick = function() {{
-                        removeOverlay();
-                    }};
-                    video.onended = function() {{
-                        removeOverlay();
-                    }};
-                    setTimeout(function() {{
-                        removeOverlay();
-                    }}, 4200);
-
-                    doc.body.appendChild(overlay);
-                    video.play().catch(function() {{}});
-                }} catch (err) {{}}
-            }})();
-            </script>
-            """,
-            height=0,
-            width=0
-        )
+        time.sleep(3.8)
+    intro_ph.empty()
+    st.rerun()
 
 # Inicializar Base de Datos una única vez por sesión
 if "db_initialized" not in st.session_state:
@@ -778,7 +706,13 @@ if "selector_perfil_top" not in st.session_state or st.session_state["selector_p
 
 # ==================== BARRA LATERAL (SIDEBAR): SELECTOR DE PERFIL ====================
 with st.sidebar:
-    st.markdown("### 🏃 Team Ardil Hub")
+    c_sb_t1, c_sb_t2 = st.columns([3, 1.2])
+    with c_sb_t1:
+        st.markdown("### 🏃 Team Ardil Hub")
+    with c_sb_t2:
+        if st.button("🎬 Intro", key="btn_ver_intro_sb", help="Reproducir vídeo de bienvenida"):
+            st.session_state["splash_intro_mostrada"] = False
+            st.rerun()
     st.caption("Plataforma de Atletismo y Rendimiento")
 
     uids_disponibles = [u["id"] for u in usuarios_db]
