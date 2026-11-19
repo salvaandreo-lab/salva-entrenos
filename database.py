@@ -101,19 +101,37 @@ def init_db():
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_splits_entrenamiento ON entrenamientos_splits_km(entrenamiento_id)")
 
-    # 5. Usuarios iniciales del Team Ardil si la tabla está vacía
+    # 5. Tabla de sesiones de plataformas externas (para persistir tokens en Streamlit Cloud)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sesiones_plataformas (
+        usuario_id INTEGER NOT NULL,
+        plataforma TEXT NOT NULL,
+        token_json TEXT NOT NULL,
+        actualizado_en TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (usuario_id, plataforma)
+    )
+    """)
+
+    # 6. Usuarios iniciales del Team Ardil si la tabla está vacía
     cursor.execute("SELECT COUNT(*) FROM usuarios")
     if cursor.fetchone()[0] == 0:
         usuarios_seed = [
             (1, 'Salva Andreo', 'salva', 'admin', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
             (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
             (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None),
-            (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', None)
+            (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing')
         ]
         cursor.executemany("""
         INSERT INTO usuarios (id, nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, usuarios_seed)
+
+    # Asegurar que Jose Ángel y Salva siempre tengan preservado su Google Doc oficial
+    cursor.execute("""
+    UPDATE usuarios 
+    SET doc_plan_url = 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'
+    WHERE (id = 8 OR alias = 'joseangel') AND (doc_plan_url IS NULL OR doc_plan_url = '')
+    """)
 
     conn.commit()
     conn.close()
@@ -152,23 +170,39 @@ def obtener_usuario_por_id(usuario_id: int) -> Optional[Dict[str, Any]]:
 def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", entrenador_id: Optional[int] = 2,
                                email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None,
                                usuario_id: Optional[int] = None, sync_remoto: bool = True) -> int:
-    """Crea un nuevo atleta o actualiza su perfil de forma segura y permanente."""
+    """Crea un nuevo atleta o actualiza su perfil de forma segura y permanente, preservando siempre su enlace a Google Docs."""
     conn = get_connection()
     cursor = conn.cursor()
     alias_clean = alias.lower().strip()
 
+    # Sanitizar doc_plan_url: solo se considera nueva URL válida si no está vacía y empieza por http
+    doc_url_valida = doc_plan_url.strip() if (doc_plan_url and isinstance(doc_plan_url, str) and doc_plan_url.strip().startswith("http")) else None
+
     if usuario_id:
-        cursor.execute("""
-        UPDATE usuarios SET
-            nombre = ?,
-            alias = ?,
-            rol = ?,
-            entrenador_id = ?,
-            email = ?,
-            avatar = ?,
-            doc_plan_url = COALESCE(?, doc_plan_url)
-        WHERE id = ?
-        """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_plan_url, usuario_id))
+        if doc_url_valida:
+            cursor.execute("""
+            UPDATE usuarios SET
+                nombre = ?,
+                alias = ?,
+                rol = ?,
+                entrenador_id = ?,
+                email = ?,
+                avatar = ?,
+                doc_plan_url = ?
+            WHERE id = ?
+            """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida, usuario_id))
+        else:
+            # PRESERVAR estrictamente la que ya tenga el usuario (NUNCA borrar ni sobreescribir con vacío o None)
+            cursor.execute("""
+            UPDATE usuarios SET
+                nombre = ?,
+                alias = ?,
+                rol = ?,
+                entrenador_id = ?,
+                email = ?,
+                avatar = ?
+            WHERE id = ?
+            """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, usuario_id))
         conn.commit()
         conn.close()
         if sync_remoto:
@@ -182,25 +216,88 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
         conn.close()
         return row[0] if row else 1
 
+    # Comprobar si ya existe por alias para actualizarlo preservando doc_plan_url
+    cursor.execute("SELECT id, doc_plan_url FROM usuarios WHERE alias = ?", (alias_clean,))
+    existente = cursor.fetchone()
+    if existente:
+        uid_existente, url_existente = existente[0], existente[1]
+        url_final = doc_url_valida or url_existente
+        cursor.execute("""
+        UPDATE usuarios SET
+            nombre = ?,
+            rol = ?,
+            entrenador_id = ?,
+            email = ?,
+            avatar = ?,
+            doc_plan_url = ?
+        WHERE id = ?
+        """, (nombre.strip(), rol, entrenador_id, email, avatar, url_final, uid_existente))
+        conn.commit()
+        conn.close()
+        if sync_remoto:
+            persistir_base_datos(f"Actualizado atleta '{nombre}' [skip ci]")
+        return uid_existente
+
     cursor.execute("""
     INSERT INTO usuarios (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(alias) DO UPDATE SET
-        nombre = excluded.nombre,
-        rol = excluded.rol,
-        entrenador_id = excluded.entrenador_id,
-        email = excluded.email,
-        avatar = excluded.avatar,
-        doc_plan_url = COALESCE(excluded.doc_plan_url, usuarios.doc_plan_url)
-    """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_plan_url))
+    """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida))
     conn.commit()
-    cursor.execute("SELECT id FROM usuarios WHERE alias = ?", (alias_clean,))
-    row = cursor.fetchone()
-    uid = row[0] if row else cursor.lastrowid
+    uid = cursor.lastrowid
     conn.close()
     if sync_remoto:
         persistir_base_datos(f"Alta permanente de atleta '{nombre}' [skip ci]")
     return uid
+
+def guardar_sesion_plataforma(usuario_id: int, plataforma: str, token_data: Dict[str, Any]) -> bool:
+    """Guarda tokens y sesión de plataformas externas en SQLite para que no se pierdan al reiniciar en la nube."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        token_str = json.dumps(token_data)
+        cursor.execute("""
+        INSERT INTO sesiones_plataformas (usuario_id, plataforma, token_json, actualizado_en)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(usuario_id, plataforma) DO UPDATE SET
+            token_json = excluded.token_json,
+            actualizado_en = excluded.actualizado_en
+        """, (usuario_id, plataforma.lower().strip(), token_str, now_str))
+        conn.commit()
+        conn.close()
+        persistir_base_datos(f"Sesión {plataforma} usuario {usuario_id} [skip ci]")
+        return True
+    except Exception as e:
+        print(f"Error al guardar sesión {plataforma} en DB: {e}")
+        return False
+
+def obtener_sesion_plataforma(usuario_id: int, plataforma: str) -> Optional[Dict[str, Any]]:
+    """Recupera la sesión guardada de una plataforma externa desde SQLite."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_json FROM sesiones_plataformas WHERE usuario_id = ? AND plataforma = ?", (usuario_id, plataforma.lower().strip()))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception as e:
+        print(f"Error al obtener sesión {plataforma} de DB: {e}")
+    return None
+
+def eliminar_sesion_plataforma(usuario_id: int, plataforma: str) -> bool:
+    """Elimina la sesión de una plataforma externa en SQLite."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sesiones_plataformas WHERE usuario_id = ? AND plataforma = ?", (usuario_id, plataforma.lower().strip()))
+        conn.commit()
+        conn.close()
+        persistir_base_datos(f"Cerrada sesión {plataforma} usuario {usuario_id} [skip ci]")
+        return True
+    except Exception as e:
+        print(f"Error al eliminar sesión {plataforma} de DB: {e}")
+        return False
 
 def eliminar_usuario(usuario_id: int) -> bool:
     """Elimina un atleta (excepto Salva y el Míster) y sus datos asociados."""
