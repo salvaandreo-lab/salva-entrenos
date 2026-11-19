@@ -169,8 +169,29 @@ def consultar_actividades_coros(
         return res["data"] or []
     return []
 
+def extraer_coros_act_id(act: Dict[str, Any]) -> str:
+    """Extrae el identificador único de la actividad de COROS soportando labelId, sportDataId, activityId, id, etc."""
+    for k in ("labelId", "sportDataId", "activityId", "id", "hId", "workoutId", "fileId"):
+        val = act.get(k)
+        if val is not None and str(val).strip() != "":
+            return str(val).strip()
+
+    st = act.get("startTime")
+    if st is not None and str(st).strip() != "":
+        return str(st).strip()
+
+    date_val = act.get("date")
+    if date_val is not None and str(date_val).strip() != "":
+        dist = int(float(act.get("distance") or 0))
+        dur = int(float(act.get("duration") or act.get("totalTime") or 0))
+        return f"{date_val}_{dist}_{dur}"
+
+    return ""
+
 def consultar_detalle_actividad_coros(api_base: str, access_token: str, activity_id: str, sport_type: int = 100) -> Optional[Dict[str, Any]]:
     """Obtiene el detalle y las vueltas (laps) de una actividad COROS específica."""
+    if not activity_id:
+        return None
     detail_url = f"{api_base}/activity/detail/query"
     headers = {
         "accesstoken": access_token,
@@ -179,6 +200,7 @@ def consultar_detalle_actividad_coros(api_base: str, access_token: str, activity
     }
     payload = json.dumps({
         "activityId": str(activity_id),
+        "labelId": str(activity_id),
         "sportType": sport_type
     }).encode("utf-8")
 
@@ -196,7 +218,12 @@ def parsear_actividad_coros(
     usuario_id: int = 1
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """Convierte el formato JSON de COROS a la estructura estándar de SportTracks."""
-    act_id = str(act.get("activityId") or act.get("id") or "")
+    act_id = extraer_coros_act_id(act)
+    if not act_id:
+        dist_m = int(float(act.get("distance") or 0.0))
+        dur_s = int(float(act.get("duration") or act.get("totalTime") or 0.0))
+        st_val = act.get("startTime") or act.get("date") or "0"
+        act_id = f"act_{st_val}_{dist_m}_{dur_s}"
     fit_hash = f"coros_u{usuario_id}_{act_id}"
 
     # Fecha
@@ -341,7 +368,13 @@ def sincronizar_actividades_coros(
 
         for act in lote:
             total_analizadas += 1
-            act_id = str(act.get("activityId") or act.get("id") or "")
+            act_id = extraer_coros_act_id(act)
+            if not act_id:
+                dist_m = int(float(act.get("distance") or 0.0))
+                dur_s = int(float(act.get("duration") or act.get("totalTime") or 0.0))
+                st_val = act.get("startTime") or act.get("date") or total_analizadas
+                act_id = f"act_{st_val}_{dist_m}_{dur_s}"
+
             fit_hash = f"coros_u{usuario_id}_{act_id}"
             nombre_act = act.get("name") or act.get("activityName") or f"Actividad {act_id}"
 
@@ -349,7 +382,8 @@ def sincronizar_actividades_coros(
                 progreso_callback(total_analizadas, total_analizadas + 1, nombre_act)
 
             # Comprobar si ya existe en la base de datos (tanto formato con uX como sin uX)
-            if fit_hash in hashes_existentes or f"coros_{act_id}" in hashes_existentes:
+            ya_esta = (fit_hash in hashes_existentes) or (act_id and f"coros_{act_id}" in hashes_existentes)
+            if ya_esta:
                 ya_existentes += 1
                 consecutivos_existentes += 1
 
