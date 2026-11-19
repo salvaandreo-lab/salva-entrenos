@@ -552,22 +552,28 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
     total_omitidas = 0
     plataformas_activas = 0
 
-    # 1. Garmin Connect (solo para Salva u1 o si este atleta específico tiene tokens propios)
+    # 1. Garmin Connect (solo si este atleta específico tiene tokens o sesión guardada)
     token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    token_file_g = os.path.join(token_dir_g, "garmin_tokens.json")
-    if target_u == 1 and not os.path.isfile(token_file_g):
-        tokens_cloud = None
-        try:
-            tokens_cloud = st.secrets.get("GARMIN_TOKENS_JSON") or os.environ.get("GARMIN_TOKENS_JSON")
-        except Exception:
-            pass
-        if tokens_cloud:
+    token_file_g = os.path.join(token_dir_g, "garmin_tokens.json" if target_u == 1 else f"garmin_tokens_u{target_u}.json")
+    if not os.path.isfile(token_file_g):
+        db_g_tok = database.obtener_sesion_plataforma(target_u, "garmin")
+        if db_g_tok:
             os.makedirs(token_dir_g, exist_ok=True)
             with open(token_file_g, "w", encoding="utf-8") as f:
-                f.write(tokens_cloud)
+                json.dump(db_g_tok, f, indent=2)
+        elif target_u == 1:
+            tokens_cloud = None
+            try:
+                tokens_cloud = st.secrets.get("GARMIN_TOKENS_JSON") or os.environ.get("GARMIN_TOKENS_JSON")
+            except Exception:
+                pass
+            if tokens_cloud:
+                os.makedirs(token_dir_g, exist_ok=True)
+                with open(token_file_g, "w", encoding="utf-8") as f:
+                    f.write(tokens_cloud)
 
     u_g_dir = garmin_sync.obtener_directorio_tokens(usuario_id=target_u)
-    has_garmin_target = (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")) or os.path.isdir(os.path.join(token_dir_g, f"u{target_u}"))
+    has_garmin_target = (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")) or os.path.isdir(os.path.join(token_dir_g, f"u{target_u}")) or bool(database.obtener_sesion_plataforma(target_u, "garmin"))
 
     if has_garmin_target:
         plataformas_activas += 1
@@ -622,7 +628,11 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
             mensajes.append(f"Strava: {e}")
 
     if plataformas_activas == 0:
-        return 0, 0, "No hay ninguna plataforma vinculada para este atleta."
+        u_info = database.obtener_usuario_por_id(target_u)
+        nom = u_info["nombre"] if u_info else "este atleta"
+        plat_pref = (u_info.get("plataforma_principal") if u_info else ("coros" if target_u != 1 else "garmin")) or "reloj"
+        plat_nombre = "COROS" if plat_pref.lower() == "coros" else ("Garmin" if plat_pref.lower() == "garmin" else "Strava")
+        return 0, 0, f"Sin sesión activa de {plat_nombre} para {nom}. Conecta tu cuenta en la pestaña '👤 Personal' -> 'Sincronizar {plat_nombre}' para activar la sincronización automática."
 
     if total_nuevas > 0:
         try:
@@ -1314,8 +1324,8 @@ def render_tab_home_atleta():
                 st.success(f"🎉 ¡Sincronizado! **{nuevas}** nuevos entrenamientos ({detalle}).")
                 time.sleep(1)
                 st.rerun()
-            elif "No hay ninguna plataforma" in detalle:
-                st.warning(detalle)
+            elif "No hay ninguna plataforma" in detalle or "Sin sesión activa" in detalle:
+                st.warning(f"ℹ️ {detalle}")
             elif "error" in detalle.lower():
                 st.error(f"Aviso durante la sincronización: {detalle}")
             else:
@@ -2791,8 +2801,37 @@ with tab_series:
             "200 mtrs": (170, 230),
         }
         dist_keys = list(distancia_opciones.keys())
-        # Selección inteligente: si hoy había series prescritas, preseleccionar exactamente la distancia del plan del atleta
-        idx_def = 3 # 1000 mtrs por defecto
+
+        # Contar sesiones reales por distancia en una sola consulta rápida
+        q_dist_counts = """
+        SELECT 
+            CASE 
+                WHEN s.distancia_m BETWEEN 3800 AND 4200 THEN '4000 mtrs'
+                WHEN s.distancia_m BETWEEN 2800 AND 3200 THEN '3000 mtrs'
+                WHEN s.distancia_m BETWEEN 1850 AND 2150 THEN '2000 mtrs'
+                WHEN s.distancia_m BETWEEN 900 AND 1100 THEN '1000 mtrs'
+                WHEN s.distancia_m BETWEEN 750 AND 850 THEN '800 mtrs'
+                WHEN s.distancia_m BETWEEN 470 AND 530 THEN '500 mtrs'
+                WHEN s.distancia_m BETWEEN 370 AND 430 THEN '400 mtrs'
+                WHEN s.distancia_m BETWEEN 270 AND 330 AND (s.tiempo_s / (s.distancia_m / 1000.0)) <= 280 THEN '300 mtrs'
+                WHEN s.distancia_m BETWEEN 170 AND 230 AND (s.tiempo_s / (s.distancia_m / 1000.0)) <= 280 THEN '200 mtrs'
+                ELSE NULL
+            END as dk,
+            e.id
+        FROM entrenamientos e
+        JOIN series_laps s ON s.entrenamiento_id = e.id
+        WHERE e.usuario_id = ?
+        GROUP BY dk, e.id
+        HAVING dk IS NOT NULL AND COUNT(s.id) >= 2
+        """
+        rows_counts = database.ejecutar_consulta_sql(q_dist_counts, (usuario_id,))
+        dist_counts = {}
+        for r in rows_counts:
+            dist_counts[r["dk"]] = dist_counts.get(r["dk"], 0) + 1
+
+        # Selección inteligente:
+        # 1. Si hoy había series prescritas en el plan del atleta y hay datos, preseleccionar esa distancia
+        idx_def = None
         hoy_str = datetime.now().strftime("%Y-%m-%d")
         for p in (comparativa_plan or []):
             if p.get("fecha") == hoy_str:
@@ -2805,10 +2844,46 @@ with tab_series:
                             break
                 break
 
+        # 2. Si no hay series hoy, preseleccionar la distancia de su serie más reciente
+        if idx_def is None:
+            ult_serie_raw = database.ejecutar_consulta_sql("""
+                SELECT s.distancia_m
+                FROM series_laps s
+                JOIN entrenamientos e ON s.entrenamiento_id = e.id
+                WHERE e.usuario_id = ? AND s.distancia_m BETWEEN 150 AND 4500
+                GROUP BY e.id, s.distancia_m
+                HAVING COUNT(s.id) >= 2
+                ORDER BY e.fecha DESC
+                LIMIT 1
+            """, (usuario_id,))
+            if ult_serie_raw:
+                d_ult_m = ult_serie_raw[0]["distancia_m"]
+                for dk, (dmin, dmax) in distancia_opciones.items():
+                    if dmin <= d_ult_m <= dmax:
+                        idx_def = dist_keys.index(dk)
+                        break
+
+        # 3. Si aún no está definida, elegir la distancia con más sesiones del atleta
+        if idx_def is None:
+            mejores = [k for k, v in dist_counts.items() if v > 0]
+            if mejores:
+                cand_max = max(mejores, key=lambda k: dist_counts[k])
+                idx_def = dist_keys.index(cand_max)
+            else:
+                idx_def = 3 # 1000 mtrs por defecto
+
+        def formato_opcion_dist(dk):
+            n = dist_counts.get(dk, 0)
+            if n > 0:
+                return f"{dk} ({n} {'sesión' if n == 1 else 'sesiones'})"
+            return f"{dk} (sin sesiones)"
+
         dist_sel = st.selectbox(
             "🔽 Seleccionar distancia de serie:",
             dist_keys,
-            index=idx_def
+            index=idx_def,
+            format_func=formato_opcion_dist,
+            key=f"series_dist_sel_{usuario_id}"
         )
         d_min, d_max = distancia_opciones[dist_sel]
 
@@ -2941,7 +3016,10 @@ with tab_series:
                 hide_index=True
             )
     else:
-        st.info(f"No se han encontrado sesiones con series de {dist_sel}.")
+        st.info(f"ℹ️ No se han encontrado sesiones con series de {dist_sel} para {usuario_activo['nombre']}.")
+        dists_con_datos = [f"**{k}** ({v} {'sesión' if v == 1 else 'sesiones'})" for k, v in dist_counts.items() if v > 0]
+        if dists_con_datos:
+            st.markdown(f"💡 *Distancias con series disponibles para {usuario_activo['nombre']}:* " + " · ".join(dists_con_datos) + ". Selecciona una en el desplegable superior.")
 
         # Si el usuario tiene cuenta de COROS conectada, ofrecer el botón de desglosar laps
         if coros_sync.obtener_tokens_guardados(usuario_id=usuario_id) is not None:
