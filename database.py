@@ -225,10 +225,16 @@ def guardar_entrenamiento(datos_entreno: Dict[str, Any], laps: List[Dict[str, An
         fecha = datos_entreno.get("fecha")
         if f_hash:
             act_base_id = f_hash.split("_")[-1] if "_" in f_hash else f_hash
-            cursor.execute(
-                "SELECT id FROM entrenamientos WHERE usuario_id = ? AND (fit_hash = ? OR fit_hash LIKE ? OR fecha = ?)",
-                (usuario_id, f_hash, f"%_{act_base_id}", fecha)
-            )
+            if act_base_id and len(act_base_id.strip()) >= 3:
+                cursor.execute(
+                    "SELECT id FROM entrenamientos WHERE usuario_id = ? AND (fit_hash = ? OR fit_hash LIKE ? OR fecha = ?)",
+                    (usuario_id, f_hash, f"%_{act_base_id}", fecha)
+                )
+            else:
+                cursor.execute(
+                    "SELECT id FROM entrenamientos WHERE usuario_id = ? AND (fit_hash = ? OR fecha = ?)",
+                    (usuario_id, f_hash, fecha)
+                )
             if cursor.fetchone():
                 return None
         elif fecha:
