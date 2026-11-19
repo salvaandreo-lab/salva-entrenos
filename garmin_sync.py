@@ -355,7 +355,7 @@ def descargar_historial_garmin(
                             "fc_media": lap.get("averageHR"),
                             "fc_max": lap.get("maxHR"),
                             "cadencia": lap.get("averageRunCadence"),
-                            "tipo_intervalo": "serie" if 350 <= lap_dist_m <= 1100 else "tramo"
+                            "tipo_intervalo": "serie" if (160 <= lap_dist_m <= 4500 and (lap_dur_s / (lap_dist_m / 1000.0) <= 280 if lap_dist_m <= 350 else lap_dur_s / (lap_dist_m / 1000.0) <= 330)) else "tramo"
                         })
             except Exception:
                 # Si no tiene splits detallados, se guarda la sesión general
