@@ -20,8 +20,8 @@ importlib.reload(consultas_ai)
 import plan_entrenador
 
 st.set_page_config(
-    page_title="SportTracks AI - Tu historial de entrenamientos con IA",
-    page_icon="🏃",
+    page_title="Ardil Track AI - Tu historial de entrenamientos con IA",
+    page_icon="🐎",
     layout="wide"
 )
 
@@ -56,16 +56,21 @@ if "db_initialized" not in st.session_state:
     database.init_db()
     st.session_state.db_initialized = True
 
-# Cargar imagen de fondo Team Ardil en base64
+# Cargar imágenes Team Ardil en base64
 bg_image_path = os.path.join(os.path.dirname(__file__), "team_ardil_bg.jpg")
+horse_image_path = os.path.join(os.path.dirname(__file__), "team_ardil_caballo_sq.jpg")
 b64_bg = ""
-if os.path.exists(bg_image_path):
-    try:
-        import base64
+b64_horse = ""
+try:
+    import base64
+    if os.path.exists(bg_image_path):
         with open(bg_image_path, "rb") as f:
             b64_bg = base64.b64encode(f.read()).decode("utf-8")
-    except Exception:
-        pass
+    if os.path.exists(horse_image_path):
+        with open(horse_image_path, "rb") as f:
+            b64_horse = base64.b64encode(f.read()).decode("utf-8")
+except Exception:
+    pass
 
 # ==================== CSS GLOBAL ESTILO GARMIN CONNECT WEB (FONDO LISO ELEGANTE) ====================
 st.markdown(f"""
@@ -81,6 +86,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 [data-testid="stHeader"] {{
     background-color: transparent !important;
+    display: none !important;
 }}
 
 [data-testid="stMain"] {{
@@ -90,21 +96,22 @@ html, body, [data-testid="stAppViewContainer"] {{
 .main .block-container {{
     background: transparent !important;
     max-width: 1400px !important;
-    padding-top: 1.2rem !important;
+    padding-top: 0.4rem !important;
 }}
 
-/* Topbar Garmin Connect */
+/* Topbar Ardil Track */
 .garmin-topbar {{
     background: rgba(24, 28, 32, 0.96) !important;
     backdrop-filter: blur(10px) !important;
     -webkit-backdrop-filter: blur(10px) !important;
-    padding: 14px 24px;
-    border-radius: 12px;
+    padding: 12px 24px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    margin-top: 0 !important;
+    margin-bottom: 28px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.22);
     border: 1px solid rgba(255, 255, 255, 0.1);
 }}
 
@@ -629,29 +636,58 @@ with st.sidebar:
                 else:
                     st.warning("Introduce al menos nombre y alias.")
 
-# Encabezado SportTracks AI con icono e insignia oficial Team Ardil
-ardil_icon_html = f'<img src="data:image/jpeg;base64,{b64_bg}" style="width: 46px; height: 46px; border-radius: 10px; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.3); box-shadow: 0 2px 8px rgba(0,0,0,0.4);" alt="Team Ardil">' if b64_bg else '<span class="garmin-logo-badge">🏃</span>'
-ardil_pill_html = f'<div class="notranslate" translate="no" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 4px 14px 4px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span class="notranslate" translate="no" style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
-ardil_sub_txt = f"Team Ardil · Athletics Coach | {usuario_activo['nombre']}" if not es_entrenador else "Team Ardil · Panel de Control del Entrenador"
-avatar_txt = usuario_activo.get("avatar") or "SA"
+# Comprobar estado de sincronización del perfil activo (Garmin, COROS o Strava)
+def comprobar_estado_sync(uid: int) -> bool:
+    tok_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
+    if os.path.isfile(os.path.join(tok_g, f"garmin_tokens_u{uid}.json")) or (uid == 1 and os.path.isfile(os.path.join(tok_g, "garmin_tokens.json"))):
+        return True
+    tok_c = os.path.join(os.path.dirname(__file__), ".coros_tokens")
+    if os.path.isfile(os.path.join(tok_c, f"coros_tokens_u{uid}.json")):
+        return True
+    if os.path.isfile(os.path.join(tok_c, "coros_tokens.json")):
+        try:
+            with open(os.path.join(tok_c, "coros_tokens.json"), "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if d.get("usuario_id") == uid or uid in (1, 8):
+                    return True
+        except Exception:
+            pass
+    tok_s = os.path.join(os.path.dirname(__file__), ".strava_tokens")
+    if os.path.isfile(os.path.join(tok_s, f"strava_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_s, "strava_tokens.json")):
+        return True
+    if uid == 2:
+        return os.path.exists(tok_g) or os.path.exists(tok_c) or os.path.exists(tok_s)
+    return False
+
+sync_activo = comprobar_estado_sync(usuario_id)
+if sync_activo:
+    pill_device_html = '<div class="notranslate" translate="no" style="background: rgba(16, 185, 129, 0.16); border: 1.5px solid rgba(16, 185, 129, 0.5); color: #10B981; font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px;"><span style="font-size: 11px;">●</span> Conectado</div>'
+else:
+    pill_device_html = '<div class="notranslate" translate="no" style="background: rgba(239, 68, 68, 0.16); border: 1.5px solid rgba(239, 68, 68, 0.5); color: #EF4444; font-weight: 700; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px;"><span style="font-size: 11px;">●</span> Error</div>'
+
+# Encabezado Ardil Track con icono del caballo sin texto e insignia oficial Team Ardil
+horse_img = b64_horse if b64_horse else b64_bg
+ardil_icon_html = f'<img src="data:image/jpeg;base64,{horse_img}" style="width: 58px; height: 58px; border-radius: 12px; object-fit: contain; background: #14171A; border: 1.5px solid rgba(255,255,255,0.22); box-shadow: 0 2px 10px rgba(0,0,0,0.5); padding: 3px;" alt="Ardil Track">' if horse_img else '<span class="garmin-logo-badge" style="width: 58px; height: 58px; font-size: 28px;">🐎</span>'
+ardil_pill_html = f'<div class="notranslate" translate="no" style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.12); padding: 5px 14px 5px 6px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);"><img src="data:image/jpeg;base64,{b64_bg}" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"><span style="font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.6px;">TEAM ARDIL</span></div>' if b64_bg else '<span class="notranslate" translate="no" style="background: rgba(255,255,255,0.12); padding: 5px 12px; border-radius: 8px; font-weight: 800; color: #FFFFFF; font-size: 12px; letter-spacing: 0.5px;">TEAM ARDIL</span>'
+
+# Siempre mostrar el atleta activo en el subtítulo para saber a quién se consulta
+nombre_activo_disp = usuario_activo.get("nombre", "Atleta")
+ardil_sub_txt = f"Team Ardil · Athletics Coach | {nombre_activo_disp}"
 
 st.markdown(f"""
 <div class="garmin-topbar notranslate" translate="no">
-    <div style="display: flex; align-items: center; gap: 14px;">
+    <div style="display: flex; align-items: center; gap: 16px;">
         {ardil_icon_html}
         <div class="notranslate" translate="no">
-            <div class="garmin-brand-title notranslate" translate="no">
-                SPORTTRACKS<span style="color: #00A3E0; font-size: 13px; vertical-align: super;"> AI</span>
+            <div class="garmin-brand-title notranslate" translate="no" style="font-size: 21px; font-weight: 800; letter-spacing: 0.8px;">
+                ARDIL TRACK<span style="color: #00A3E0; font-size: 12px; vertical-align: super; font-weight: 700; margin-left: 2px;"> AI</span>
             </div>
-            <div class="garmin-brand-sub notranslate" translate="no">{ardil_sub_txt}</div>
+            <div class="garmin-brand-sub notranslate" translate="no" style="color: #94A3B8; font-size: 12.5px;">{ardil_sub_txt}</div>
         </div>
     </div>
-    <div style="display: flex; align-items: center; gap: 16px;">
+    <div style="display: flex; align-items: center; gap: 14px;">
         {ardil_pill_html}
-        <div class="garmin-device-pill notranslate" translate="no">
-            {pill_device_html}
-        </div>
-        <div class="garmin-avatar notranslate" translate="no">{avatar_txt}</div>
+        {pill_device_html}
     </div>
 </div>
 """, unsafe_allow_html=True)
