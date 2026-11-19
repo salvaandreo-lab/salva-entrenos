@@ -76,6 +76,9 @@ def sync_all():
         "README.md",
         "team_ardil_bg.jpg",
         "team_ardil_caballo_sq.jpg",
+        "team_ardil_intro.mp4",
+        "AGENTS.md",
+        "GEMINI.md",
         ".streamlit/config.toml",
         "auto_sync_runner.py"
     ]
