@@ -26,7 +26,7 @@ REGIONS = {
 }
 
 def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
-    """Devuelve los datos de sesión de COROS si existen, priorizando por usuario_id."""
+    """Devuelve los datos de sesión de COROS para el atleta correspondiente."""
     if usuario_id:
         f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
         if os.path.isfile(f_user):
@@ -35,6 +35,16 @@ def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[
                     return json.load(f)
             except Exception:
                 pass
+        # Si se busca para un usuario concreto y no tiene archivo propio, comprobar si coros_tokens.json es de él
+        if os.path.isfile(COROS_TOKENS_FILE):
+            try:
+                with open(COROS_TOKENS_FILE, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if d.get("usuario_id") == usuario_id:
+                        return d
+            except Exception:
+                pass
+        return None
 
     if os.path.isfile(COROS_TOKENS_FILE):
         try:
