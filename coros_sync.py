@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -24,8 +25,17 @@ REGIONS = {
     }
 }
 
-def obtener_tokens_guardados() -> Optional[Dict[str, Any]]:
-    """Devuelve los datos de sesión de COROS si existen."""
+def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Devuelve los datos de sesión de COROS si existen, priorizando por usuario_id."""
+    if usuario_id:
+        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
+        if os.path.isfile(f_user):
+            try:
+                with open(f_user, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
     if os.path.isfile(COROS_TOKENS_FILE):
         try:
             with open(COROS_TOKENS_FILE, "r", encoding="utf-8") as f:
@@ -34,21 +44,32 @@ def obtener_tokens_guardados() -> Optional[Dict[str, Any]]:
             pass
     return None
 
-def guardar_tokens_coros(data: Dict[str, Any]):
+def guardar_tokens_coros(data: Dict[str, Any], usuario_id: Optional[int] = None):
     """Guarda los tokens de sesión de COROS en disco."""
     os.makedirs(COROS_TOKENS_DIR, exist_ok=True)
     with open(COROS_TOKENS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+    if usuario_id:
+        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
+        with open(f_user, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
 
-def cerrar_sesion_coros():
+def cerrar_sesion_coros(usuario_id: Optional[int] = None):
     """Elimina la sesión guardada de COROS."""
+    if usuario_id:
+        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
+        if os.path.isfile(f_user):
+            try:
+                os.remove(f_user)
+            except Exception:
+                pass
     if os.path.isfile(COROS_TOKENS_FILE):
         try:
             os.remove(COROS_TOKENS_FILE)
         except Exception:
             pass
 
-def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu") -> Tuple[bool, str, Dict[str, Any]]:
+def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu", usuario_id: Optional[int] = None) -> Tuple[bool, str, Dict[str, Any]]:
     """
     Inicia sesión en COROS Training Hub utilizando el endpoint de autenticación.
     Hashea la contraseña con MD5 como requiere la API de COROS.
@@ -90,15 +111,16 @@ def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu") ->
                 "nickname": nick,
                 "region": region_key,
                 "api_base": api_base,
+                "usuario_id": usuario_id,
                 "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-            guardar_tokens_coros(sesion_info)
+            guardar_tokens_coros(sesion_info, usuario_id=usuario_id)
             return True, f"¡Sesión iniciada con éxito! Usuario: {nick}", sesion_info
         else:
             msg = res_data.get("message") or "Credenciales incorrectas o región no coincidente."
             # Si falló en EU, intentar automáticamente en Global
             if region_key == "eu":
-                return iniciar_sesion_coros(account, password, region_key="global")
+                return iniciar_sesion_coros(account, password, region_key="global", usuario_id=usuario_id)
             return False, f"Error al conectar con COROS: {msg}", {}
 
     except urllib.error.HTTPError as e:
@@ -107,20 +129,33 @@ def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu") ->
     except Exception as e:
         return False, f"Excepción de conexión con COROS: {str(e)}", {}
 
-def consultar_actividades_coros(api_base: str, access_token: str, size: int = 50, page: int = 1) -> List[Dict[str, Any]]:
-    """Obtiene la lista de actividades desde el Training Hub de COROS."""
+def consultar_actividades_coros(
+    api_base: str,
+    access_token: str,
+    size: int = 50,
+    page: int = 1,
+    start_day: Optional[str] = None,
+    end_day: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Obtiene una página de actividades desde el Training Hub de COROS con rango de fechas."""
     query_url = f"{api_base}/activity/query"
     headers = {
         "accesstoken": access_token,
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0"
     }
-    
-    # Rango de fechas amplio
+
+    if not start_day:
+        start_day = "20150101"
+    if not end_day:
+        end_day = datetime.now().strftime("%Y%m%d")
+
     params = urllib.parse.urlencode({
         "size": size,
         "pageNumber": page,
-        "modeList": ""
+        "modeList": "",
+        "startDay": start_day,
+        "endDay": end_day
     })
     full_url = f"{query_url}?{params}"
 
@@ -129,9 +164,9 @@ def consultar_actividades_coros(api_base: str, access_token: str, size: int = 50
         res = json.loads(resp.read().decode("utf-8"))
 
     if "data" in res and isinstance(res["data"], dict) and "dataList" in res["data"]:
-        return res["data"]["dataList"]
+        return res["data"]["dataList"] or []
     elif "data" in res and isinstance(res["data"], list):
-        return res["data"]
+        return res["data"] or []
     return []
 
 def consultar_detalle_actividad_coros(api_base: str, access_token: str, activity_id: str, sport_type: int = 100) -> Optional[Dict[str, Any]]:
@@ -155,10 +190,14 @@ def consultar_detalle_actividad_coros(api_base: str, access_token: str, activity
     except Exception:
         return None
 
-def parsear_actividad_coros(act: Dict[str, Any], detail: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+def parsear_actividad_coros(
+    act: Dict[str, Any],
+    detail: Optional[Dict[str, Any]] = None,
+    usuario_id: int = 1
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """Convierte el formato JSON de COROS a la estructura estándar de SportTracks."""
     act_id = str(act.get("activityId") or act.get("id") or "")
-    fit_hash = f"coros_{act_id}"
+    fit_hash = f"coros_u{usuario_id}_{act_id}"
 
     # Fecha
     # COROS suele almacenar 'startTime' en epoch milisegundos o string 'date' YYYYMMDD
@@ -223,7 +262,7 @@ def parsear_actividad_coros(act: Dict[str, Any], detail: Optional[Dict[str, Any]
                 "fc_media": int(lap.get("avgHr") or lap.get("avgHeartRate")) if (lap.get("avgHr") or lap.get("avgHeartRate")) else None,
                 "fc_max": int(lap.get("maxHr") or lap.get("maxHeartRate")) if (lap.get("maxHr") or lap.get("maxHeartRate")) else None,
                 "cadencia": int(lap.get("avgCadence") or 0),
-                "tipo_intervalo": "serie"
+                "tipo_intervalo": "serie" if 350 <= lap_dist <= 1100 else "tramo"
             })
     else:
         # Vuelta única por defecto si no hay desglose
@@ -241,62 +280,146 @@ def parsear_actividad_coros(act: Dict[str, Any], detail: Optional[Dict[str, Any]
 
     return datos_entreno, laps_resultado
 
-def sincronizar_actividades_coros(progreso_callback: Optional[Callable[[int, int, str], None]] = None, max_actividades: int = 50, usuario_id: int = 1) -> Dict[str, Any]:
-    """Descarga e importa actividades desde COROS Training Hub para un atleta específico."""
-    tokens = obtener_tokens_guardados()
+def sincronizar_actividades_coros(
+    progreso_callback: Optional[Callable[[int, int, str], None]] = None,
+    max_actividades: int = 0,
+    usuario_id: int = 1,
+    historial_completo: Optional[bool] = None
+) -> Dict[str, Any]:
+    """
+    Descarga e importa actividades desde COROS Training Hub para un atleta específico.
+    - Primera vez: descarga todo el historial de forma paginada hacia atrás.
+    - Sincronizaciones posteriores: descarga solo las actividades nuevas que no estén en la app.
+    """
+    tokens = obtener_tokens_guardados(usuario_id=usuario_id)
     if not tokens or not tokens.get("accessToken"):
         return {"status": "error", "mensaje": "No hay ninguna sesión activa de COROS. Inicia sesión primero.", "nuevos": 0}
 
     api_base = tokens.get("api_base", REGIONS["eu"]["api_base"])
     token = tokens["accessToken"]
 
-    try:
-        actividades = consultar_actividades_coros(api_base, token, size=max_actividades)
-    except Exception as e:
-        return {"status": "error", "mensaje": f"Error al consultar actividades en COROS: {e}", "nuevos": 0}
-
-    if not actividades:
-        return {"status": "ok", "mensaje": "No se encontraron actividades en tu cuenta de COROS.", "nuevos": 0}
-
-    total = len(actividades)
-    nuevos_guardados = 0
-    ya_existentes = 0
-
     conn = database.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT fit_hash FROM entrenamientos WHERE fit_hash IS NOT NULL")
+    cursor.execute("SELECT fit_hash FROM entrenamientos WHERE usuario_id = ? AND fit_hash IS NOT NULL", (usuario_id,))
     hashes_existentes = set(r[0] for r in cursor.fetchall())
     conn.close()
 
-    for idx, act in enumerate(actividades):
-        act_id = str(act.get("activityId") or act.get("id") or "")
-        fit_hash = f"coros_u{usuario_id}_{act_id}"
-        nombre_act = act.get("name") or act.get("activityName") or f"Actividad {act_id}"
+    tiene_entrenos_previos = len(hashes_existentes) > 0
 
-        if progreso_callback:
-            progreso_callback(idx + 1, total, nombre_act)
+    # Si historial_completo no se especifica, se activa automáticamente si no tiene entrenos previos
+    if historial_completo is None:
+        es_modo_historial = not tiene_entrenos_previos
+    else:
+        es_modo_historial = historial_completo
 
-        if fit_hash in hashes_existentes:
-            ya_existentes += 1
-            continue
+    page = 1
+    page_size = 50
+    nuevos_guardados = 0
+    ya_existentes = 0
+    consecutivos_existentes = 0
+    total_analizadas = 0
 
-        # Obtener detalle de laps si está disponible
-        detail = consultar_detalle_actividad_coros(api_base, token, act_id, act.get("sportType", 100))
-        datos_entreno, laps = parsear_actividad_coros(act, detail)
+    end_day = datetime.now().strftime("%Y%m%d")
+    start_day = "20150101"
 
-        nuevo_id = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
-        if nuevo_id:
-            nuevos_guardados += 1
-            hashes_existentes.add(fit_hash)
+    while True:
+        try:
+            lote = consultar_actividades_coros(
+                api_base, token,
+                size=page_size,
+                page=page,
+                start_day=start_day,
+                end_day=end_day
+            )
+        except Exception as e:
+            if page == 1:
+                return {"status": "error", "mensaje": f"Error al consultar actividades en COROS: {e}", "nuevos": 0}
+            break
+
+        if not lote:
+            break
+
+        for act in lote:
+            total_analizadas += 1
+            act_id = str(act.get("activityId") or act.get("id") or "")
+            fit_hash = f"coros_u{usuario_id}_{act_id}"
+            nombre_act = act.get("name") or act.get("activityName") or f"Actividad {act_id}"
+
+            if progreso_callback:
+                progreso_callback(total_analizadas, total_analizadas + 1, nombre_act)
+
+            # Comprobar si ya existe en la base de datos (tanto formato con uX como sin uX)
+            if fit_hash in hashes_existentes or f"coros_{act_id}" in hashes_existentes:
+                ya_existentes += 1
+                consecutivos_existentes += 1
+
+                # En sincronización incremental normal, si encontramos 5 entrenamientos consecutivos ya guardados,
+                # significa que ya hemos alcanzado el último entreno conocido.
+                if not es_modo_historial and tiene_entrenos_previos and consecutivos_existentes >= 5:
+                    break
+                continue
+
+            consecutivos_existentes = 0
+
+            # Obtener detalle de laps si está disponible
+            detail = None
+            try:
+                detail = consultar_detalle_actividad_coros(api_base, token, act_id, act.get("sportType", 100))
+            except Exception:
+                pass
+
+            datos_entreno, laps = parsear_actividad_coros(act, detail, usuario_id=usuario_id)
+            nuevo_id = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
+
+            if nuevo_id:
+                nuevos_guardados += 1
+                hashes_existentes.add(fit_hash)
+
+                # Calcular y guardar splits de 1 km
+                try:
+                    splits_km = database.calcular_splits_km(
+                        datos_entreno.get("distancia_km", 0.0),
+                        datos_entreno.get("tiempo_total_s", 0.0),
+                        laps
+                    )
+                    if splits_km:
+                        database.guardar_splits_km(nuevo_id, splits_km)
+                except Exception:
+                    pass
+
+            if max_actividades > 0 and nuevos_guardados >= max_actividades:
+                break
+
+        # Condición de parada temprana en modo incremental
+        if not es_modo_historial and tiene_entrenos_previos and consecutivos_existentes >= 5:
+            break
+
+        if len(lote) < page_size:
+            # Fin del historial disponible en COROS
+            break
+
+        if max_actividades > 0 and nuevos_guardados >= max_actividades:
+            break
+
+        page += 1
+        time.sleep(0.3)
 
     # Actualizar fecha de última sincronización
     tokens["last_sync"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    guardar_tokens_coros(tokens)
+    guardar_tokens_coros(tokens, usuario_id=usuario_id)
 
+    # Persistencia permanente en GitHub
+    if nuevos_guardados > 0:
+        try:
+            database.persistir_base_datos(f"Sincronizados {nuevos_guardados} entrenos de COROS (atleta id {usuario_id}) [skip ci]")
+        except Exception:
+            pass
+
+    modo_txt = "historial completo" if es_modo_historial else "sincronización incremental"
     return {
         "status": "ok",
-        "mensaje": f"Sincronización completada: {nuevos_guardados} nuevos entrenamientos importados ({ya_existentes} ya existían).",
+        "mensaje": f"Sincronización COROS completada ({modo_txt}): {nuevos_guardados} nuevos entrenamientos importados ({ya_existentes} ya existían).",
         "nuevos": nuevos_guardados,
         "existentes": ya_existentes,
-        "total": total
+        "total": total_analizadas
     }
