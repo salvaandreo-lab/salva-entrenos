@@ -340,7 +340,7 @@ def ejecutar_consulta_sql(query: str, params: tuple = ()) -> List[Dict[str, Any]
         conn.close()
 
 def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Calcula y devuelve las mejores marcas históricas en distancias clave de un atleta."""
+    """Calcula y devuelve las mejores marcas históricas en distancias clave de un atleta (atletismo/running)."""
     conn = get_connection()
     cursor = conn.cursor()
     records = []
@@ -348,7 +348,21 @@ def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[st
     u_filter_series = "AND e.usuario_id = ?" if usuario_id else ""
     u_filter_entrenos = "AND usuario_id = ?" if usuario_id else ""
 
-    # 1. Series en pista / intervalos
+    filtro_deporte_series = """
+        AND (e.deporte IN ('running', 'track_running', 'trail_running') OR e.deporte IS NULL)
+        AND e.titulo NOT LIKE '%Piscina%' AND e.titulo NOT LIKE '%Natación%' AND e.titulo NOT LIKE '%Natacion%'
+        AND e.titulo NOT LIKE '%Ciclismo%' AND e.titulo NOT LIKE '%Bici%' AND e.titulo NOT LIKE '%Bike%'
+        AND e.titulo NOT LIKE '%Caminata%' AND e.titulo NOT LIKE '%Andar%'
+    """
+
+    filtro_deporte_carrera = """
+        AND (deporte IN ('running', 'track_running', 'trail_running') OR deporte IS NULL)
+        AND titulo NOT LIKE '%Piscina%' AND titulo NOT LIKE '%Natación%' AND titulo NOT LIKE '%Natacion%'
+        AND titulo NOT LIKE '%Ciclismo%' AND titulo NOT LIKE '%Bici%' AND titulo NOT LIKE '%Bike%'
+        AND titulo NOT LIKE '%Caminata%' AND titulo NOT LIKE '%Andar%'
+    """
+
+    # 1. Series en pista / intervalos (requiere vueltas múltiples para no tomar rodajes continuos casuales)
     intervalos = [
         ("400m (Serie)", 380, 430, "s.distancia_m BETWEEN 380 AND 430"),
         ("1.000m (Serie)", 950, 1050, "s.distancia_m BETWEEN 950 AND 1050"),
@@ -360,7 +374,10 @@ def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[st
                    e.fecha, e.titulo, s.fc_media, s.tiempo_s
             FROM series_laps s
             JOIN entrenamientos e ON s.entrenamiento_id = e.id
-            WHERE {condicion} AND s.tiempo_s > 0 {u_filter_series}
+            WHERE {condicion} AND s.tiempo_s > 0
+              {filtro_deporte_series}
+              AND (SELECT COUNT(*) FROM series_laps sl WHERE sl.entrenamiento_id = e.id) >= 2
+              {u_filter_series}
             ORDER BY s.tiempo_s ASC
             LIMIT 1
         """
@@ -369,6 +386,26 @@ def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[st
         row = cursor.fetchone()
         if row:
             records.append(dict(row))
+
+    # Si no se encontró marca de 1.000m en series_laps, buscar en parciales km reales si existen
+    categorias_presentes = [r["categoria"] for r in records]
+    if "1.000m (Serie)" not in categorias_presentes:
+        query_split_1k = f"""
+            SELECT '1.000m (Mejor Km)' as categoria, esk.tiempo_formateado as marca, esk.ritmo_minkm as ritmo,
+                   e.fecha, e.titulo, esk.fc_media, esk.tiempo_s
+            FROM entrenamientos_splits_km esk
+            JOIN entrenamientos e ON esk.entrenamiento_id = e.id
+            WHERE esk.distancia_m BETWEEN 950 AND 1050 AND esk.tiempo_s > 140
+              {filtro_deporte_series}
+              {u_filter_series}
+            ORDER BY esk.tiempo_s ASC
+            LIMIT 1
+        """
+        params_split = (usuario_id,) if usuario_id else ()
+        cursor.execute(query_split_1k, params_split)
+        row_split = cursor.fetchone()
+        if row_split:
+            records.append(dict(row_split))
 
     # 2. Distancias estándar en entrenamientos / competiciones
     distancias_carrera = [
@@ -382,7 +419,9 @@ def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[st
             SELECT ? as categoria, tiempo_formateado as marca, ritmo_medio_minkm as ritmo,
                    fecha, titulo, fc_media, tiempo_total_s as tiempo_s
             FROM entrenamientos
-            WHERE distancia_km BETWEEN ? AND ? AND tiempo_total_s > 0 {u_filter_entrenos}
+            WHERE distancia_km BETWEEN ? AND ? AND tiempo_total_s > 0
+              {filtro_deporte_carrera}
+              {u_filter_entrenos}
             ORDER BY tiempo_total_s ASC
             LIMIT 1
         """
@@ -399,7 +438,9 @@ def obtener_records_personales(usuario_id: Optional[int] = None) -> List[Dict[st
                ritmo_medio_minkm as ritmo,
                fecha, titulo, fc_media, tiempo_total_s as tiempo_s
         FROM entrenamientos
-        WHERE 1=1 {u_filter_entrenos}
+        WHERE 1=1
+          {filtro_deporte_carrera}
+          {u_filter_entrenos}
         ORDER BY distancia_km DESC
         LIMIT 1
     """
