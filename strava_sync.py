@@ -12,17 +12,21 @@ from garmin_sync import segundos_a_formato, calcular_ritmo
 STRAVA_TOKENS_DIR = os.path.join(os.path.dirname(__file__), ".strava_tokens")
 STRAVA_TOKENS_FILE = os.path.join(STRAVA_TOKENS_DIR, "strava_tokens.json")
 
-def obtener_tokens_strava(usuario_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def obtener_tokens_strava(usuario_id: Optional[int] = None, *args, **kwargs) -> Optional[Dict[str, Any]]:
     """Devuelve los datos de conexión de Strava para el atleta correspondiente."""
-    if usuario_id:
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+    uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
+    if uid is None and len(args) > 0 and isinstance(args[0], int):
+        uid = args[0]
+
+    if uid:
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
         if os.path.isfile(f_user):
             try:
                 with open(f_user, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
-        if usuario_id == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
+        if uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
             try:
                 with open(STRAVA_TOKENS_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
@@ -38,31 +42,39 @@ def obtener_tokens_strava(usuario_id: Optional[int] = None) -> Optional[Dict[str
             pass
     return None
 
-def guardar_tokens_strava(data: Dict[str, Any], usuario_id: Optional[int] = None):
+def guardar_tokens_strava(data: Dict[str, Any], usuario_id: Optional[int] = None, *args, **kwargs):
     """Guarda los tokens de Strava en disco de forma aislada por atleta."""
     os.makedirs(STRAVA_TOKENS_DIR, exist_ok=True)
-    if usuario_id:
-        data["usuario_id"] = usuario_id
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+    uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
+    if uid is None and len(args) > 0 and isinstance(args[0], int):
+        uid = args[0]
+
+    if uid:
+        data["usuario_id"] = uid
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
         with open(f_user, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        if usuario_id == 1:
+        if uid == 1:
             with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
     else:
         with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
-def cerrar_sesion_strava(usuario_id: Optional[int] = None):
+def cerrar_sesion_strava(usuario_id: Optional[int] = None, *args, **kwargs):
     """Elimina la conexión guardada con Strava para el atleta especificado."""
-    if usuario_id:
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{usuario_id}.json")
+    uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
+    if uid is None and len(args) > 0 and isinstance(args[0], int):
+        uid = args[0]
+
+    if uid:
+        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
         if os.path.isfile(f_user):
             try:
                 os.remove(f_user)
             except Exception:
                 pass
-        if usuario_id == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
+        if uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
             try:
                 os.remove(STRAVA_TOKENS_FILE)
             except Exception:
