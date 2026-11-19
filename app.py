@@ -489,10 +489,11 @@ div[data-testid="stRadio"] label:hover {{
 """, unsafe_allow_html=True)
 
 # Detección dinámica de dispositivos/plataformas conectadas
+curr_uid_chk = st.session_state.get("usuario_id_activo", 1)
 token_dir_garmin = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-tiene_garmin = os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))
-tiene_coros = coros_sync.obtener_tokens_guardados() is not None
-tiene_strava = strava_sync.obtener_tokens_strava() is not None
+tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json"))
+tiene_coros = coros_sync.obtener_tokens_guardados(usuario_id=curr_uid_chk) is not None
+tiene_strava = strava_sync.obtener_tokens_strava(usuario_id=curr_uid_chk) is not None
 
 marcas_conectadas = []
 if tiene_garmin:
@@ -508,17 +509,18 @@ if marcas_conectadas:
 else:
     pill_device_html = "<span>⌚ Dispositivo</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
 
-def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
+def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None) -> Tuple[int, int, str]:
     """
     Sincroniza automáticamente los entrenamientos desde cualquiera de las plataformas
-    que tengan sesión activa (Garmin Connect, COROS Training Hub o Strava).
+    que tengan sesión activa para el atleta indicado.
     """
+    target_u = u_id or st.session_state.get("usuario_id_activo", 1)
     mensajes = []
     total_nuevas = 0
     total_omitidas = 0
     plataformas_activas = 0
 
-    # 1. Garmin Connect
+    # 1. Garmin Connect (solo para Salva u1 o si tiene tokens propios)
     token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
     token_file_g = os.path.join(token_dir_g, "garmin_tokens.json")
     if not os.path.isfile(token_file_g):
@@ -532,11 +534,11 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
             with open(token_file_g, "w", encoding="utf-8") as f:
                 f.write(tokens_cloud)
 
-    if os.path.isfile(token_file_g):
+    if (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")):
         plataformas_activas += 1
         try:
             cliente, _ = garmin_sync.conectar_garmin("", tokenstore_dir=token_dir_g)
-            nuevas_g, omit_g = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts)
+            nuevas_g, omit_g = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts, usuario_id=target_u)
             total_nuevas += nuevas_g
             total_omitidas += omit_g
             if nuevas_g > 0:
@@ -546,11 +548,11 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
         except Exception as e:
             mensajes.append(f"Garmin: {e}")
 
-    # 2. COROS Training Hub
-    if coros_sync.obtener_tokens_guardados():
+    # 2. COROS Training Hub (solo si este atleta específico tiene sesión de COROS)
+    if coros_sync.obtener_tokens_guardados(usuario_id=target_u):
         plataformas_activas += 1
         try:
-            res_c = coros_sync.sincronizar_actividades_coros(max_actividades=max_acts)
+            res_c = coros_sync.sincronizar_actividades_coros(max_actividades=max_acts, usuario_id=target_u)
             if res_c.get("status") == "ok":
                 n_c = res_c.get("nuevos", 0)
                 o_c = res_c.get("existentes", 0)
@@ -566,10 +568,10 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
             mensajes.append(f"COROS: {e}")
 
     # 3. Strava
-    if strava_sync.obtener_tokens_strava():
+    if strava_sync.obtener_tokens_strava(usuario_id=target_u):
         plataformas_activas += 1
         try:
-            res_s = strava_sync.sincronizar_actividades_strava(max_actividades=max_acts)
+            res_s = strava_sync.sincronizar_actividades_strava(max_actividades=max_acts, usuario_id=target_u)
             if res_s.get("status") == "ok":
                 n_s = res_s.get("nuevos", 0)
                 o_s = res_s.get("existentes", 0)
@@ -585,7 +587,7 @@ def sincronizar_actividades_todas(max_acts: int = 30) -> Tuple[int, int, str]:
             mensajes.append(f"Strava: {e}")
 
     if plataformas_activas == 0:
-        return 0, 0, "No hay ninguna plataforma vinculada todavía. Puedes conectar tu cuenta de Garmin, COROS o Strava en la pestaña '👤 Personal'."
+        return 0, 0, "No hay ninguna plataforma vinculada para este atleta."
 
     if total_nuevas > 0:
         try:
