@@ -2789,20 +2789,18 @@ with tab_series:
             "200 mtrs": (170, 230),
         }
         dist_keys = list(distancia_opciones.keys())
-        # Selección inteligente: si hoy había series prescritas de 300m o 400m, preseleccionar esa distancia
+        # Selección inteligente: si hoy había series prescritas, preseleccionar exactamente la distancia del plan del atleta
         idx_def = 3 # 1000 mtrs por defecto
         hoy_str = datetime.now().strftime("%Y-%m-%d")
         for p in (comparativa_plan or []):
             if p.get("fecha") == hoy_str:
                 tit_desc = f"{p.get('titulo_sugerido', '')} {p.get('plan_descripcion', '')}".lower()
-                if "300" in tit_desc and "300 mtrs" in dist_keys:
-                    idx_def = dist_keys.index("300 mtrs")
-                elif "400" in tit_desc and "400 mtrs" in dist_keys:
-                    idx_def = dist_keys.index("400 mtrs")
-                elif "500" in tit_desc and "500 mtrs" in dist_keys:
-                    idx_def = dist_keys.index("500 mtrs")
-                elif "2000" in tit_desc and "2000 mtrs" in dist_keys:
-                    idx_def = dist_keys.index("2000 mtrs")
+                for d_cand in ["4000", "3000", "2000", "1000", "800", "500", "400", "300", "200"]:
+                    if re.search(rf'\b{d_cand}\b', tit_desc) or f"x{d_cand}" in tit_desc or f"x {d_cand}" in tit_desc or f"{d_cand}m" in tit_desc:
+                        cand_key = f"{d_cand} mtrs"
+                        if cand_key in dist_keys:
+                            idx_def = dist_keys.index(cand_key)
+                            break
                 break
 
         dist_sel = st.selectbox(
