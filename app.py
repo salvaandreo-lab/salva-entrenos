@@ -14,10 +14,16 @@ import database
 import garmin_sync
 import coros_sync
 import strava_sync
-import importlib
 import consultas_ai
-importlib.reload(consultas_ai)
 import plan_entrenador
+import importlib
+
+# Forzar recarga en memoria en Streamlit Cloud para evitar versiones cacheadas
+for _mod in (database, garmin_sync, coros_sync, strava_sync, consultas_ai, plan_entrenador):
+    try:
+        importlib.reload(_mod)
+    except Exception:
+        pass
 
 st.set_page_config(
     page_title="Ardil Track AI - Tu historial de entrenamientos con IA",
@@ -491,9 +497,34 @@ div[data-testid="stRadio"] label:hover {{
 # Detección dinámica de dispositivos/plataformas conectadas
 curr_uid_chk = st.session_state.get("usuario_id_activo", 1)
 token_dir_garmin = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json")) or os.path.isdir(os.path.join(token_dir_garmin, f"u{curr_uid_chk}"))
-tiene_coros = coros_sync.obtener_tokens_guardados(usuario_id=curr_uid_chk) is not None
-tiene_strava = strava_sync.obtener_tokens_strava(usuario_id=curr_uid_chk) is not None
+
+tiene_garmin = False
+try:
+    tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json")) or os.path.isdir(os.path.join(token_dir_garmin, f"u{curr_uid_chk}"))
+except Exception:
+    pass
+
+tiene_coros = False
+try:
+    tiene_coros = coros_sync.obtener_tokens_guardados(usuario_id=curr_uid_chk) is not None
+except TypeError:
+    try:
+        tiene_coros = coros_sync.obtener_tokens_guardados() is not None
+    except Exception:
+        pass
+except Exception:
+    pass
+
+tiene_strava = False
+try:
+    tiene_strava = strava_sync.obtener_tokens_strava(usuario_id=curr_uid_chk) is not None
+except TypeError:
+    try:
+        tiene_strava = strava_sync.obtener_tokens_strava() is not None
+    except Exception:
+        pass
+except Exception:
+    pass
 
 marcas_conectadas = []
 if tiene_garmin:
