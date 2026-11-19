@@ -13,28 +13,34 @@ STRAVA_TOKENS_DIR = os.path.join(os.path.dirname(__file__), ".strava_tokens")
 STRAVA_TOKENS_FILE = os.path.join(STRAVA_TOKENS_DIR, "strava_tokens.json")
 
 def obtener_tokens_strava(usuario_id: Optional[int] = None, *args, **kwargs) -> Optional[Dict[str, Any]]:
-    """Devuelve los datos de conexión de Strava para el atleta correspondiente."""
+    """Devuelve los datos de conexión de Strava para el atleta correspondiente, consultando disco y base de datos persistente."""
     uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
     if uid is None and len(args) > 0 and isinstance(args[0], int):
         uid = args[0]
+    target_uid = uid if uid is not None else 1
 
-    if uid:
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
-        if os.path.isfile(f_user):
-            try:
-                with open(f_user, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        if uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
-            try:
-                with open(STRAVA_TOKENS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return None
+    os.makedirs(STRAVA_TOKENS_DIR, exist_ok=True)
+    f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{target_uid}.json")
+    if os.path.isfile(f_user):
+        try:
+            with open(f_user, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if d.get("access_token") or d.get("accessToken"):
+                    return d
+        except Exception:
+            pass
 
-    if os.path.isfile(STRAVA_TOKENS_FILE):
+    # Recuperar de SQLite si no está en disco
+    try:
+        db_tokens = database.obtener_sesion_plataforma(target_uid, "strava")
+        if db_tokens and (db_tokens.get("access_token") or db_tokens.get("accessToken")):
+            with open(f_user, "w", encoding="utf-8") as f:
+                json.dump(db_tokens, f, indent=2)
+            return db_tokens
+    except Exception:
+        pass
+
+    if target_uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
         try:
             with open(STRAVA_TOKENS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -43,48 +49,50 @@ def obtener_tokens_strava(usuario_id: Optional[int] = None, *args, **kwargs) -> 
     return None
 
 def guardar_tokens_strava(data: Dict[str, Any], usuario_id: Optional[int] = None, *args, **kwargs):
-    """Guarda los tokens de Strava en disco de forma aislada por atleta."""
+    """Guarda los tokens de Strava en disco y en SQLite de forma aislada por atleta."""
     os.makedirs(STRAVA_TOKENS_DIR, exist_ok=True)
     uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
     if uid is None and len(args) > 0 and isinstance(args[0], int):
         uid = args[0]
+    target_uid = uid if uid is not None else 1
 
-    if uid:
-        data["usuario_id"] = uid
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
-        with open(f_user, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        if uid == 1:
-            with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-    else:
+    data["usuario_id"] = target_uid
+    f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{target_uid}.json")
+    with open(f_user, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    if target_uid == 1:
         with open(STRAVA_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
+    try:
+        database.guardar_sesion_plataforma(target_uid, "strava", data)
+    except Exception as e:
+        print(f"Aviso al guardar sesión Strava en SQLite: {e}")
+
 def cerrar_sesion_strava(usuario_id: Optional[int] = None, *args, **kwargs):
-    """Elimina la conexión guardada con Strava para el atleta especificado."""
+    """Elimina la conexión guardada con Strava en disco y SQLite para el atleta especificado."""
     uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
     if uid is None and len(args) > 0 and isinstance(args[0], int):
         uid = args[0]
+    target_uid = uid if uid is not None else 1
 
-    if uid:
-        f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{uid}.json")
-        if os.path.isfile(f_user):
-            try:
-                os.remove(f_user)
-            except Exception:
-                pass
-        if uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
-            try:
-                os.remove(STRAVA_TOKENS_FILE)
-            except Exception:
-                pass
-    else:
-        if os.path.isfile(STRAVA_TOKENS_FILE):
-            try:
-                os.remove(STRAVA_TOKENS_FILE)
-            except Exception:
-                pass
+    f_user = os.path.join(STRAVA_TOKENS_DIR, f"strava_tokens_u{target_uid}.json")
+    if os.path.isfile(f_user):
+        try:
+            os.remove(f_user)
+        except Exception:
+            pass
+
+    try:
+        database.eliminar_sesion_plataforma(target_uid, "strava")
+    except Exception:
+        pass
+
+    if target_uid == 1 and os.path.isfile(STRAVA_TOKENS_FILE):
+        try:
+            os.remove(STRAVA_TOKENS_FILE)
+        except Exception:
+            pass
 
 def refrescar_token_strava(client_id: str, client_secret: str, refresh_token: str, usuario_id: int = 1) -> Tuple[bool, str, Dict[str, Any]]:
     """Refresca el token OAuth de Strava expirado."""
