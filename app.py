@@ -491,7 +491,7 @@ div[data-testid="stRadio"] label:hover {{
 # Detección dinámica de dispositivos/plataformas conectadas
 curr_uid_chk = st.session_state.get("usuario_id_activo", 1)
 token_dir_garmin = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json"))
+tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json")) or os.path.isdir(os.path.join(token_dir_garmin, f"u{curr_uid_chk}"))
 tiene_coros = coros_sync.obtener_tokens_guardados(usuario_id=curr_uid_chk) is not None
 tiene_strava = strava_sync.obtener_tokens_strava(usuario_id=curr_uid_chk) is not None
 
@@ -520,10 +520,10 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
     total_omitidas = 0
     plataformas_activas = 0
 
-    # 1. Garmin Connect (solo para Salva u1 o si tiene tokens propios)
+    # 1. Garmin Connect (solo para Salva u1 o si este atleta específico tiene tokens propios)
     token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
     token_file_g = os.path.join(token_dir_g, "garmin_tokens.json")
-    if not os.path.isfile(token_file_g):
+    if target_u == 1 and not os.path.isfile(token_file_g):
         tokens_cloud = None
         try:
             tokens_cloud = st.secrets.get("GARMIN_TOKENS_JSON") or os.environ.get("GARMIN_TOKENS_JSON")
@@ -534,10 +534,13 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
             with open(token_file_g, "w", encoding="utf-8") as f:
                 f.write(tokens_cloud)
 
-    if (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")):
+    u_g_dir = garmin_sync.obtener_directorio_tokens(usuario_id=target_u)
+    has_garmin_target = (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")) or os.path.isdir(os.path.join(token_dir_g, f"u{target_u}"))
+
+    if has_garmin_target:
         plataformas_activas += 1
         try:
-            cliente, _ = garmin_sync.conectar_garmin("", tokenstore_dir=token_dir_g)
+            cliente, _ = garmin_sync.conectar_garmin("", tokenstore_dir=u_g_dir, usuario_id=target_u)
             nuevas_g, omit_g = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts, usuario_id=target_u)
             total_nuevas += nuevas_g
             total_omitidas += omit_g
@@ -2829,13 +2832,18 @@ with tab_series:
 def render_sincronizar_garmin():
     st.subheader("📥 Sincronización y Carga de Entrenamientos")
 
-    # Detección de sesión guardada
-    token_dir = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    token_file = os.path.join(token_dir, "garmin_tokens.json")
-    tiene_sesion = os.path.isfile(token_file)
+    # Detección de sesión guardada aislada estrictamente por atleta
+    token_dir_root = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
+    token_dir_user = garmin_sync.obtener_directorio_tokens(usuario_id=usuario_id)
+    if usuario_id == 1:
+        tiene_sesion = os.path.isfile(os.path.join(token_dir_root, "garmin_tokens.json")) or os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json"))
+        target_tokenstore = token_dir_user if os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json")) else token_dir_root
+    else:
+        tiene_sesion = os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json"))
+        target_tokenstore = token_dir_user
 
     if tiene_sesion:
-        st.success("✅ **Sesión de Garmin Connect guardada activamente en este ordenador.**")
+        st.success(f"✅ **Sesión de Garmin Connect guardada activamente para {usuario_activo.get('nombre')}.**")
         if st.button("🔄 Sincronizar", type="primary", key="btn_sync_garmin_panel"):
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -2847,7 +2855,7 @@ def render_sincronizar_garmin():
 
             try:
                 with st.spinner("Conectando con sesión guardada..."):
-                    cliente, msg = garmin_sync.conectar_garmin("", tokenstore_dir=token_dir)
+                    cliente, msg = garmin_sync.conectar_garmin("", tokenstore_dir=target_tokenstore, usuario_id=usuario_id)
 
                 nuevas, omitidas = garmin_sync.descargar_historial_garmin(
                     cliente,
@@ -2894,7 +2902,8 @@ def render_sincronizar_garmin():
             else:
                 try:
                     with st.spinner(f"Conectando a {garmin_user}..."):
-                        cliente, msg = garmin_sync.conectar_garmin(garmin_user, garmin_pass)
+                        target_dir = garmin_sync.obtener_directorio_tokens(garmin_user, usuario_id=usuario_id)
+                        cliente, msg = garmin_sync.conectar_garmin(garmin_user, garmin_pass, tokenstore_dir=target_dir, usuario_id=usuario_id)
 
                     max_acts = limite_map.get(opcion_limite, 50)
                     nuevas, omitidas = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts, usuario_id=usuario_id)
@@ -3054,9 +3063,9 @@ def render_sincronizar_strava():
     with col_s2:
         st.caption("Compatible con Tokens Personales y OAuth 2.0 de Strava.")
 
-    sesion_strava = strava_sync.obtener_tokens_strava()
+    sesion_strava = strava_sync.obtener_tokens_strava(usuario_id=usuario_id)
     if sesion_strava:
-        st.success(f"✅ **Conectado a Strava:** `{sesion_strava.get('athlete_name', 'Atleta Conectado')}`")
+        st.success(f"✅ **Conectado a Strava ({usuario_activo.get('nombre')}):** `{sesion_strava.get('athlete_name', 'Atleta Conectado')}`")
         if sesion_strava.get("last_sync"):
             st.caption(f"🕒 Última sincronización: {sesion_strava.get('last_sync')}")
 
@@ -3080,18 +3089,18 @@ def render_sincronizar_strava():
 
         with col_logout:
             if st.button("🚪 Desconectar Strava", use_container_width=True):
-                strava_sync.cerrar_sesion_strava()
+                strava_sync.cerrar_sesion_strava(usuario_id=usuario_id)
                 st.success("Conexión con Strava eliminada.")
                 st.rerun()
     else:
-        st.markdown("#### 🔑 Conectar cuenta de Strava")
+        st.markdown(f"#### 🔑 Conectar cuenta de Strava para {usuario_activo.get('nombre')}")
         st.caption("Introduce tu **Access Token de Strava** (obtenido en Strava Developer Settings) o credenciales de aplicación.")
 
         tab_tok, tab_oauth = st.tabs(["Token Directo (Recomendado)", "OAuth Completo (Client ID / Secret)"])
         with tab_tok:
             with st.form("form_strava_token"):
                 st_tok = st.text_input("Access Token de Strava:", type="password", placeholder="pe. 8a3f890c2e...")
-                st_name = st.text_input("Nombre de atleta / referencia:", value="Salva Andreo")
+                st_name = st.text_input("Nombre de atleta / referencia:", value=usuario_activo.get("nombre", "Atleta"))
                 submit_tok = st.form_submit_button("Conectar Token", type="primary")
 
                 if submit_tok:
@@ -3099,7 +3108,7 @@ def render_sincronizar_strava():
                         st.error("Debes introducir un Access Token.")
                     else:
                         with st.spinner("Comprobando token con la API de Strava..."):
-                            ok, msg, _ = strava_sync.conectar_strava_token_directo(st_tok, st_name)
+                            ok, msg, _ = strava_sync.conectar_strava_token_directo(st_tok, st_name, usuario_id=usuario_id)
                             if ok:
                                 st.success(msg)
                                 st.rerun()
@@ -3118,7 +3127,7 @@ def render_sincronizar_strava():
                         st.error("Introduce todos los campos OAuth.")
                     else:
                         with st.spinner("Solicitando token de acceso a Strava..."):
-                            ok, msg, _ = strava_sync.refrescar_token_strava(cid, csec, rtok)
+                            ok, msg, _ = strava_sync.refrescar_token_strava(cid, csec, rtok, usuario_id=usuario_id)
                             if ok:
                                 st.success(msg)
                                 st.rerun()
