@@ -154,6 +154,19 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
     if not tokenstore_dir:
         tokenstore_dir = obtener_directorio_tokens(email, usuario_id=usuario_id)
 
+    target_uid = usuario_id if usuario_id is not None else 1
+    token_json_file = os.path.join(tokenstore_dir, "garmin_tokens.json")
+    if not os.path.isfile(token_json_file):
+        try:
+            import json, database
+            db_tok = database.obtener_sesion_plataforma(target_uid, "garmin")
+            if db_tok:
+                os.makedirs(tokenstore_dir, exist_ok=True)
+                with open(token_json_file, "w", encoding="utf-8") as f:
+                    json.dump(db_tok, f, indent=2)
+        except Exception:
+            pass
+
     client = Garmin(email, password)
     # Intentar login usando tokens guardados si existen
     try:
