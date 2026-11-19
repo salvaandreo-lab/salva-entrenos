@@ -683,7 +683,6 @@ with st.sidebar:
         uid_sel = st.session_state.get("selector_perfil_sidebar")
         if uid_sel:
             st.session_state["usuario_id_activo"] = uid_sel
-            st.session_state["selector_perfil_top"] = uid_sel
             if uid_sel == 2:
                 st.session_state["mister_inspeccionando"] = False
 
@@ -718,7 +717,6 @@ with st.sidebar:
                             avatar=n_avatar.upper().strip() if n_avatar else "🏃"
                         )
                         st.session_state["usuario_id_activo"] = nuevo_id
-                        st.session_state["selector_perfil_sidebar"] = nuevo_id
                         st.success(f"Atleta '{n_nombre}' registrado.")
                         st.rerun()
                 else:
@@ -808,7 +806,6 @@ with col_prof_sel:
         uid_t = st.session_state.get("selector_perfil_top")
         if uid_t:
             st.session_state["usuario_id_activo"] = uid_t
-            st.session_state["selector_perfil_sidebar"] = uid_t
             if uid_t == 2:
                 st.session_state["mister_inspeccionando"] = False
 
@@ -831,7 +828,6 @@ if st.session_state.get("mister_inspeccionando") and not es_entrenador:
     with col_insp2:
         if st.button("🔙 Volver al Míster", type="primary", use_container_width=True, key="btn_volver_mister"):
             st.session_state["usuario_id_activo"] = 2
-            st.session_state["selector_perfil_sidebar"] = 2
             st.session_state["mister_inspeccionando"] = False
             st.rerun()
 
@@ -1138,7 +1134,6 @@ def render_monitor_equipo():
 
             if st.button("🔍 Ver ficha", key=f"btn_insp_card_{uid}", use_container_width=True):
                 st.session_state["usuario_id_activo"] = uid
-                st.session_state["selector_perfil_sidebar"] = uid
                 st.session_state["mister_inspeccionando"] = True
                 st.rerun()
 
@@ -3391,7 +3386,6 @@ def render_gestion_atletas():
                             doc_plan_url=n_url.strip() if n_url else None
                         )
                         st.session_state["usuario_id_activo"] = nuevo_id
-                        st.session_state["selector_perfil_sidebar"] = nuevo_id
                         st.success(f"Atleta '{n_nom}' añadido con éxito al equipo.")
                         st.rerun()
                 else:
