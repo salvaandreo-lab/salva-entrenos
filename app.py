@@ -966,111 +966,183 @@ def aplicar_estilo_powerbi(fig, titulo="", subtitulo="", x_title="", y_title="",
 
 # ==================== MONITOR GENERAL DEL ENTRENADOR ====================
 def render_monitor_equipo():
-    st.markdown("### 👑 Monitor General del Equipo · Team Ardil")
-    st.caption("Visión global de todos los atletas que diriges, volumen acumulado y estado de entrenamientos.")
+    dias_semana_es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    meses_es = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    hoy = date.today()
+    fecha_hoy_txt = f"{dias_semana_es[hoy.weekday()]}, {hoy.day} de {meses_es[hoy.month]} de {hoy.year}"
 
     resumen_eq = database.obtener_resumen_equipo(entrenador_id=usuario_id)
     atletas = resumen_eq.get("atletas", [])
+    total_atletas = resumen_eq.get("total_atletas", len(atletas))
+    entrenados_hoy = resumen_eq.get("entrenados_hoy", 0)
+    pendientes_hoy = resumen_eq.get("pendientes_hoy", max(0, total_atletas - entrenados_hoy))
+    km_esta_sem = sum(a.get("km_semana", 0) for a in atletas)
 
-    # Tarjetas Métricas Superiores estilo Power BI / Garmin Connect
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    with col_m1:
-        st.metric("👥 Atletas Activos", len(atletas))
-    with col_m2:
-        st.metric("🏃 Entrenamientos Totales", resumen_eq.get("total_entrenos_equipo", 0))
-    with col_m3:
-        st.metric("📈 Kilómetros del Club", f"{resumen_eq.get('total_km_equipo', 0):,.1f} km")
-    with col_m4:
-        km_esta_sem = sum(a.get("km_semana", 0) for a in atletas)
-        st.metric("⚡ Km Esta Semana", f"{km_esta_sem:.1f} km")
+    # Encabezado minimalista estilo panel de control de élite
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); border-radius: 16px; padding: 20px 24px; color: white; margin-bottom: 22px; box-shadow: 0 4px 15px rgba(0,0,0,0.12);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+                <div style="font-size: 23px; font-weight: 800; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px;">
+                    <span>👑 Panel del Míster</span>
+                    <span style="font-size: 13px; font-weight: 700; background: rgba(0, 163, 224, 0.25); color: #38BDF8; padding: 3px 12px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.35);">Team Ardil</span>
+                </div>
+                <div style="font-size: 13.5px; color: #94A3B8; margin-top: 5px;">📅 {fecha_hoy_txt} · Resumen de entrenamientos en tiempo real</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 6px 14px; text-align: center;">
+                    <div style="font-size: 10px; color: #94A3B8; font-weight: 700; text-transform: uppercase;">Atletas</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #FFFFFF;">{total_atletas}</div>
+                </div>
+                <div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+                    <div style="font-size: 10px; color: #6EE7B7; font-weight: 700; text-transform: uppercase;">Hecho Hoy</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #34D399;">{entrenados_hoy}</div>
+                </div>
+                <div style="background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+                    <div style="font-size: 10px; color: #FCD34D; font-weight: 700; text-transform: uppercase;">Pendientes</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #FBBF24;">{pendientes_hoy}</div>
+                </div>
+                <div style="background: rgba(14, 165, 233, 0.16); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+                    <div style="font-size: 10px; color: #7DD3FC; font-weight: 700; text-transform: uppercase;">Km Semana</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #38BDF8;">{km_esta_sem:.1f} km</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("#### 🏃 Rendimiento y Estado de los Atletas")
+    # Filtro rápido limpio
+    filtro_col, buscador_col = st.columns([3, 2])
+    with filtro_col:
+        filtro_opciones = [
+            f"Todos ({total_atletas})",
+            f"🟢 Hecho hoy ({entrenados_hoy})",
+            f"⏳ Pendientes ({pendientes_hoy})"
+        ]
+        if hasattr(st, "segmented_control"):
+            filtro_sel = st.segmented_control("Filtrar:", filtro_opciones, default=filtro_opciones[0], label_visibility="collapsed")
+        else:
+            filtro_sel = st.radio("Filtrar:", filtro_opciones, horizontal=True, label_visibility="collapsed")
+    with buscador_col:
+        texto_busqueda = st.text_input("🔍 Buscar atleta...", placeholder="Escribe el nombre de un atleta...", label_visibility="collapsed")
 
-    if not atletas:
-        st.info("No hay atletas registrados todavía.")
-    else:
-        for a in atletas:
-            ult_fecha_txt = a.get('ultimo_fecha') or 'Sin registrar'
-            ult_tit_txt = a.get('ultimo_titulo') or ''
-            ult_det_txt = f"({a.get('ultimo_km')} km @ {a.get('ultimo_ritmo')} min/km)" if a.get('ultimo_km') else ""
+    # Filtrar lista de atletas
+    atletas_mostrar = []
+    for a in atletas:
+        if texto_busqueda and texto_busqueda.lower() not in a["nombre"].lower() and texto_busqueda.lower() not in a.get("alias", "").lower():
+            continue
+        ha_entrenado = a.get("entreno_hoy") is not None
+        if "Hecho hoy" in (filtro_sel or "") and not ha_entrenado:
+            continue
+        if "Pendientes" in (filtro_sel or "") and ha_entrenado:
+            continue
+        atletas_mostrar.append(a)
 
-            col_info, col_kpis, col_btn = st.columns([3, 2, 1.5])
-            with col_info:
-                st.markdown(f"""
-                <div style="display: flex; align-items: center; gap: 12px; padding: 6px 0;">
-                    <div style="width: 44px; height: 44px; border-radius: 50%; background: #007CC3; color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                        {a.get('avatar', '🏃')}
+    if not atletas_mostrar:
+        st.info("No se encontraron atletas con los filtros seleccionados.")
+        return
+
+    # Renderizar cada atleta en una tarjeta limpia "De un plumazo"
+    for a in atletas_mostrar:
+        uid = a["id"]
+        nombre = a["nombre"]
+        avatar = a.get("avatar") or (nombre[:2].upper() if len(nombre) >= 2 else "🏃")
+        entreno_hoy = a.get("entreno_hoy")
+        plan_hoy = a.get("plan_hoy")
+        ultimo_fecha = a.get("ultimo_fecha")
+        ultimo_titulo = a.get("ultimo_titulo")
+        ultimo_km = a.get("ultimo_km")
+        ultimo_ritmo = a.get("ultimo_ritmo")
+        km_semana = a.get("km_semana", 0.0)
+        entrenos_semana = a.get("entrenos_semana", 0)
+        plataformas = a.get("plataformas", [])
+
+        plataforma_txt = " · ".join(plataformas) if plataformas else "Sin vincular"
+
+        col_avatar, col_entreno, col_semana_btn = st.columns([2.6, 5.2, 2.2])
+
+        with col_avatar:
+            st.markdown(f"""
+            <div style="display: flex; align-items: center; gap: 14px; padding: 10px 0;">
+                <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #007CC3 0%, #004C75 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; box-shadow: 0 2px 8px rgba(0, 124, 195, 0.25); flex-shrink: 0;">
+                    {avatar}
+                </div>
+                <div>
+                    <div style="font-size: 16.5px; font-weight: 800; color: #0F172A; line-height: 1.2;">{nombre}</div>
+                    <div style="font-size: 12px; color: #64748B; margin-top: 3px;">
+                        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: {'#10B981' if plataformas else '#94A3B8'}; margin-right: 4px;"></span>
+                        {plataforma_txt}
                     </div>
-                    <div>
-                        <div style="font-size: 16px; font-weight: 700; color: #181C20;">{a['nombre']} <span style="font-size: 12px; font-weight: 400; color: #64748B;">(@{a.get('alias', '')})</span></div>
-                        <div style="font-size: 12px; color: #64748B;">
-                            Último entreno: <b style="color: #0369A1;">{ult_fecha_txt}</b> {ult_tit_txt} {ult_det_txt}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col_entreno:
+            if entreno_hoy:
+                hora_txt = f" a las {entreno_hoy['hora']}" if entreno_hoy.get('hora') else ""
+                origen_badge = f"<span style='background: #E0F2FE; color: #0369A1; font-weight: 700; font-size: 11px; padding: 2px 7px; border-radius: 6px; margin-left: 6px;'>{entreno_hoy['origen']}</span>" if entreno_hoy.get('origen') else ""
+                fc_txt = f"<span style='color: #E11D48; font-weight: 700;'> ♥ {entreno_hoy['fc']} ppm</span>" if entreno_hoy.get('fc') else ""
+
+                st.markdown(f"""
+                <div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="background: #10B981; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">✓ Hecho hoy</span>
+                            <span style="font-size: 12px; color: #047857; font-weight: 600;">{hora_txt}</span>
+                            {origen_badge}
                         </div>
                     </div>
+                    <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">
+                        <span style="font-size: 20px; font-weight: 800; color: #065F46;">{entreno_hoy['km']} km</span>
+                        <span style="font-size: 15px; font-weight: 700; color: #047857;">⏱️ {entreno_hoy['tiempo']}</span>
+                        <span style="font-size: 15px; font-weight: 700; color: #047857;">⚡ {entreno_hoy['ritmo']} <span style="font-size: 11px; font-weight: 500;">min/km</span></span>
+                        {fc_txt}
+                    </div>
+                    <div style="font-size: 12.5px; color: #166534; font-weight: 600; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        {entreno_hoy['titulo']}
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
-            with col_kpis:
+            else:
+                # Pendiente hoy
+                plan_tit = plan_hoy.get("titulo") if plan_hoy else None
+
+                if plan_tit:
+                    plan_html = f"<div style='font-size: 13px; color: #92400E; font-weight: 700; margin-top: 2px;'>🎯 Plan hoy: <span style='color: #B45309;'>{plan_tit}</span></div>"
+                else:
+                    plan_html = "<div style='font-size: 12px; color: #94A3B8; font-style: italic; margin-top: 2px;'>Sin sesión programada en el plan para hoy</div>"
+
+                if ultimo_fecha:
+                    ult_txt = f"<div style='font-size: 11.5px; color: #64748B; margin-top: 3px;'>Última sesión: <b>{ultimo_fecha}</b> ({ultimo_km} km @ {ultimo_ritmo} min/km) · <i>{ultimo_titulo}</i></div>"
+                else:
+                    ult_txt = "<div style='font-size: 11.5px; color: #94A3B8; margin-top: 3px;'>Sin entrenamientos registrados todavía</div>"
+
                 st.markdown(f"""
-                <div style="display: flex; gap: 20px; align-items: center; height: 100%;">
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Km Semana</div>
-                        <div style="font-size: 17px; font-weight: 800; color: #007CC3;">{a.get('km_semana', 0):.1f} km</div>
+                <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="background: #F59E0B; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">⏳ Pendiente hoy</span>
                     </div>
-                    <div>
-                        <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Total Histórico</div>
-                        <div style="font-size: 17px; font-weight: 800; color: #181C20;">{a.get('total_km', 0):,.1f} km</div>
-                    </div>
+                    {plan_html}
+                    {ult_txt}
                 </div>
                 """, unsafe_allow_html=True)
-            with col_btn:
-                if st.button(f"🔍 Ficha {a['nombre'].split()[0]}", key=f"btn_insp_{a['id']}", use_container_width=True):
-                    st.session_state["usuario_id_activo"] = a["id"]
-                    st.session_state["selector_perfil_sidebar"] = a["id"]
-                    st.session_state["mister_inspeccionando"] = True
-                    st.rerun()
 
-            st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
+        with col_semana_btn:
+            st.markdown(f"""
+            <div style="text-align: right; padding-top: 6px; padding-right: 4px;">
+                <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Esta semana</div>
+                <div style="font-size: 19px; font-weight: 800; color: #007CC3;">{km_semana:.1f} <span style="font-size: 12px; font-weight: 600;">km</span></div>
+                <div style="font-size: 11px; color: #94A3B8;">{entrenos_semana} {'sesión' if entrenos_semana == 1 else 'sesiones'}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    # Gráfico comparativo de volumen si hay atletas con kilómetros
-    atletas_con_km = [a for a in atletas if a.get("total_km", 0) > 0]
-    if len(atletas_con_km) > 1:
-        st.markdown("#### 📊 Comparativa de Volumen del Equipo")
-        df_comp = pd.DataFrame(atletas_con_km)
-        fig_comp = px.bar(
-            df_comp,
-            x="nombre",
-            y="total_km",
-            text="total_km",
-            color="nombre",
-            labels={"nombre": "Atleta", "total_km": "Kilómetros Totales"}
-        )
-        fig_comp.update_traces(texttemplate='%{text:.1f} km', textposition='outside')
-        aplicar_estilo_powerbi(fig_comp, titulo="Kilómetros Totales por Atleta", subtitulo="Volumen histórico acumulado")
-        st.plotly_chart(fig_comp, use_container_width=True)
+            if st.button("🔍 Ver ficha", key=f"btn_insp_card_{uid}", use_container_width=True):
+                st.session_state["usuario_id_activo"] = uid
+                st.session_state["selector_perfil_sidebar"] = uid
+                st.session_state["mister_inspeccionando"] = True
+                st.rerun()
 
-    st.markdown("#### ⚡ Últimos Entrenamientos Registrados por el Equipo")
-    ultimos_team = database.obtener_ultimos_entrenos_equipo(limite=15)
-    if ultimos_team:
-        df_team = pd.DataFrame(ultimos_team)
-        st.dataframe(
-            df_team[[
-                "atleta_nombre", "fecha", "titulo", "distancia_km",
-                "tiempo_formateado", "ritmo_medio_minkm", "fc_media"
-            ]].rename(columns={
-                "atleta_nombre": "Atleta",
-                "fecha": "Fecha",
-                "titulo": "Sesión",
-                "distancia_km": "Distancia (km)",
-                "tiempo_formateado": "Tiempo",
-                "ritmo_medio_minkm": "Ritmo",
-                "fc_media": "FC Media"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("Aún no hay entrenamientos registrados en el equipo.")
+        st.markdown("<div style='height: 1px; background: #E2E8F0; margin: 8px 0 14px 0;'></div>", unsafe_allow_html=True)
 
 def render_tab_home_atleta():
     # --- 1. DATO: ÚLTIMO ENTRENO ---
