@@ -987,37 +987,35 @@ def render_monitor_equipo():
     km_esta_sem = sum(a.get("km_semana", 0) for a in atletas)
 
     # Encabezado minimalista estilo panel de control de élite
-    st.markdown(f"""
-    <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); border-radius: 16px; padding: 20px 24px; color: white; margin-bottom: 22px; box-shadow: 0 4px 15px rgba(0,0,0,0.12);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-            <div>
-                <div style="font-size: 23px; font-weight: 800; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px;">
-                    <span>👑 Panel del Míster</span>
-                    <span style="font-size: 13px; font-weight: 700; background: rgba(0, 163, 224, 0.25); color: #38BDF8; padding: 3px 12px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.35);">Team Ardil</span>
-                </div>
-                <div style="font-size: 13.5px; color: #94A3B8; margin-top: 5px;">📅 {fecha_hoy_txt} · Resumen de entrenamientos en tiempo real</div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <div style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 6px 14px; text-align: center;">
-                    <div style="font-size: 10px; color: #94A3B8; font-weight: 700; text-transform: uppercase;">Atletas</div>
-                    <div style="font-size: 17px; font-weight: 800; color: #FFFFFF;">{total_atletas}</div>
-                </div>
-                <div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
-                    <div style="font-size: 10px; color: #6EE7B7; font-weight: 700; text-transform: uppercase;">Hecho Hoy</div>
-                    <div style="font-size: 17px; font-weight: 800; color: #34D399;">{entrenados_hoy}</div>
-                </div>
-                <div style="background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
-                    <div style="font-size: 10px; color: #FCD34D; font-weight: 700; text-transform: uppercase;">Pendientes</div>
-                    <div style="font-size: 17px; font-weight: 800; color: #FBBF24;">{pendientes_hoy}</div>
-                </div>
-                <div style="background: rgba(14, 165, 233, 0.16); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
-                    <div style="font-size: 10px; color: #7DD3FC; font-weight: 700; text-transform: uppercase;">Km Semana</div>
-                    <div style="font-size: 17px; font-weight: 800; color: #38BDF8;">{km_esta_sem:.1f} km</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"""<div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); border-radius: 16px; padding: 20px 24px; color: white; margin-bottom: 22px; box-shadow: 0 4px 15px rgba(0,0,0,0.12);">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+<div>
+<div style="font-size: 23px; font-weight: 800; letter-spacing: -0.3px; display: flex; align-items: center; gap: 10px;">
+<span>👑 Panel del Míster</span>
+<span style="font-size: 13px; font-weight: 700; background: rgba(0, 163, 224, 0.25); color: #38BDF8; padding: 3px 12px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.35);">Team Ardil</span>
+</div>
+<div style="font-size: 13.5px; color: #94A3B8; margin-top: 5px;">📅 {fecha_hoy_txt} · Resumen de entrenamientos en tiempo real</div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+<div style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 6px 14px; text-align: center;">
+<div style="font-size: 10px; color: #94A3B8; font-weight: 700; text-transform: uppercase;">Atletas</div>
+<div style="font-size: 17px; font-weight: 800; color: #FFFFFF;">{total_atletas}</div>
+</div>
+<div style="background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+<div style="font-size: 10px; color: #6EE7B7; font-weight: 700; text-transform: uppercase;">Hecho Hoy</div>
+<div style="font-size: 17px; font-weight: 800; color: #34D399;">{entrenados_hoy}</div>
+</div>
+<div style="background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+<div style="font-size: 10px; color: #FCD34D; font-weight: 700; text-transform: uppercase;">Pendientes</div>
+<div style="font-size: 17px; font-weight: 800; color: #FBBF24;">{pendientes_hoy}</div>
+</div>
+<div style="background: rgba(14, 165, 233, 0.16); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 10px; padding: 6px 14px; text-align: center;">
+<div style="font-size: 10px; color: #7DD3FC; font-weight: 700; text-transform: uppercase;">Km Semana</div>
+<div style="font-size: 17px; font-weight: 800; color: #38BDF8;">{km_esta_sem:.1f} km</div>
+</div>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
 
     # Filtro rápido limpio
     filtro_col, buscador_col = st.columns([3, 2])
@@ -1070,20 +1068,15 @@ def render_monitor_equipo():
         col_avatar, col_entreno, col_semana_btn = st.columns([2.6, 5.2, 2.2])
 
         with col_avatar:
-            st.markdown(f"""
-            <div style="display: flex; align-items: center; gap: 14px; padding: 10px 0;">
-                <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #007CC3 0%, #004C75 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; box-shadow: 0 2px 8px rgba(0, 124, 195, 0.25); flex-shrink: 0;">
-                    {avatar}
-                </div>
-                <div>
-                    <div style="font-size: 16.5px; font-weight: 800; color: #0F172A; line-height: 1.2;">{nombre}</div>
-                    <div style="font-size: 12px; color: #64748B; margin-top: 3px;">
-                        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: {'#10B981' if plataformas else '#94A3B8'}; margin-right: 4px;"></span>
-                        {plataforma_txt}
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="display: flex; align-items: center; gap: 14px; padding: 10px 0;">'
+                f'<div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #007CC3 0%, #004C75 100%); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; box-shadow: 0 2px 8px rgba(0, 124, 195, 0.25); flex-shrink: 0;">{avatar}</div>'
+                f'<div><div style="font-size: 16.5px; font-weight: 800; color: #0F172A; line-height: 1.2;">{nombre}</div>'
+                f'<div style="font-size: 12px; color: #64748B; margin-top: 3px;">'
+                f'<span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: {"#10B981" if plataformas else "#94A3B8"}; margin-right: 4px;"></span>'
+                f'{plataforma_txt}</div></div></div>',
+                unsafe_allow_html=True
+            )
 
         with col_entreno:
             if entreno_hoy:
@@ -1091,26 +1084,22 @@ def render_monitor_equipo():
                 origen_badge = f"<span style='background: #E0F2FE; color: #0369A1; font-weight: 700; font-size: 11px; padding: 2px 7px; border-radius: 6px; margin-left: 6px;'>{entreno_hoy['origen']}</span>" if entreno_hoy.get('origen') else ""
                 fc_txt = f"<span style='color: #E11D48; font-weight: 700;'> ♥ {entreno_hoy['fc']} ppm</span>" if entreno_hoy.get('fc') else ""
 
-                st.markdown(f"""
-                <div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <div style="display: flex; align-items: center; gap: 6px;">
-                            <span style="background: #10B981; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">✓ Hecho hoy</span>
-                            <span style="font-size: 12px; color: #047857; font-weight: 600;">{hora_txt}</span>
-                            {origen_badge}
-                        </div>
-                    </div>
-                    <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">
-                        <span style="font-size: 20px; font-weight: 800; color: #065F46;">{entreno_hoy['km']} km</span>
-                        <span style="font-size: 15px; font-weight: 700; color: #047857;">⏱️ {entreno_hoy['tiempo']}</span>
-                        <span style="font-size: 15px; font-weight: 700; color: #047857;">⚡ {entreno_hoy['ritmo']} <span style="font-size: 11px; font-weight: 500;">min/km</span></span>
-                        {fc_txt}
-                    </div>
-                    <div style="font-size: 12.5px; color: #166534; font-weight: 600; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        {entreno_hoy['titulo']}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">'
+                    f'<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">'
+                    f'<div style="display: flex; align-items: center; gap: 6px;">'
+                    f'<span style="background: #10B981; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">✓ Hecho hoy</span>'
+                    f'<span style="font-size: 12px; color: #047857; font-weight: 600;">{hora_txt}</span>{origen_badge}'
+                    f'</div></div>'
+                    f'<div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">'
+                    f'<span style="font-size: 20px; font-weight: 800; color: #065F46;">{entreno_hoy["km"]} km</span>'
+                    f'<span style="font-size: 15px; font-weight: 700; color: #047857;">⏱️ {entreno_hoy["tiempo"]}</span>'
+                    f'<span style="font-size: 15px; font-weight: 700; color: #047857;">⚡ {entreno_hoy["ritmo"]} <span style="font-size: 11px; font-weight: 500;">min/km</span></span>'
+                    f'{fc_txt}</div>'
+                    f'<div style="font-size: 12.5px; color: #166534; font-weight: 600; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{entreno_hoy["titulo"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
             else:
                 # Pendiente hoy
                 plan_tit = plan_hoy.get("titulo") if plan_hoy else None
@@ -1125,24 +1114,24 @@ def render_monitor_equipo():
                 else:
                     ult_txt = "<div style='font-size: 11.5px; color: #94A3B8; margin-top: 3px;'>Sin entrenamientos registrados todavía</div>"
 
-                st.markdown(f"""
-                <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span style="background: #F59E0B; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">⏳ Pendiente hoy</span>
-                    </div>
-                    {plan_html}
-                    {ult_txt}
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    f'<div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 10px 14px; margin: 4px 0;">'
+                    f'<div style="display: flex; align-items: center; gap: 6px;">'
+                    f'<span style="background: #F59E0B; color: white; font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">⏳ Pendiente hoy</span>'
+                    f'</div>'
+                    f'{plan_html}{ult_txt}</div>',
+                    unsafe_allow_html=True
+                )
 
         with col_semana_btn:
-            st.markdown(f"""
-            <div style="text-align: right; padding-top: 6px; padding-right: 4px;">
-                <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Esta semana</div>
-                <div style="font-size: 19px; font-weight: 800; color: #007CC3;">{km_semana:.1f} <span style="font-size: 12px; font-weight: 600;">km</span></div>
-                <div style="font-size: 11px; color: #94A3B8;">{entrenos_semana} {'sesión' if entrenos_semana == 1 else 'sesiones'}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="text-align: right; padding-top: 6px; padding-right: 4px;">'
+                f'<div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase;">Esta semana</div>'
+                f'<div style="font-size: 19px; font-weight: 800; color: #007CC3;">{km_semana:.1f} <span style="font-size: 12px; font-weight: 600;">km</span></div>'
+                f'<div style="font-size: 11px; color: #94A3B8;">{entrenos_semana} {"sesión" if entrenos_semana == 1 else "sesiones"}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
 
             if st.button("🔍 Ver ficha", key=f"btn_insp_card_{uid}", use_container_width=True):
                 st.session_state["usuario_id_activo"] = uid
