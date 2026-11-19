@@ -60,7 +60,9 @@ components.html(
 )
 
 # Video Intro Splash Screen (se muestra a pantalla completa durante 5 segundos)
-v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro_v2.mp4")
+v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro_v3.mp4")
+if not os.path.isfile(v_intro_path):
+    v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro_v2.mp4")
 if not os.path.isfile(v_intro_path):
     v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
 
