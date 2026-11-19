@@ -22,7 +22,8 @@ import plan_entrenador
 st.set_page_config(
     page_title="Ardil Track AI - Tu historial de entrenamientos con IA",
     page_icon="🐎",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Keepalive automático y prevención de traducción automática del navegador
@@ -86,7 +87,26 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 [data-testid="stHeader"] {{
     background-color: transparent !important;
+    z-index: 100 !important;
+}}
+
+[data-testid="stHeader"] [data-testid="stToolbar"] {{
     display: none !important;
+}}
+
+[data-testid="stHeader"] [data-testid="stDecoration"] {{
+    display: none !important;
+}}
+
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {{
+    display: flex !important;
+    visibility: visible !important;
+    color: #181C20 !important;
+    background: #FFFFFF !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+    z-index: 999999 !important;
 }}
 
 [data-testid="stMain"] {{
