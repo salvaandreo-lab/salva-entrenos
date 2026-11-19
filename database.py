@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from datetime import date, timedelta, datetime
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -1005,7 +1006,7 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
             pass
         try:
             token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-            if (uid == 1 and os.path.isfile(os.path.join(token_dir_g, "garmin_tokens.json"))) or os.path.isdir(os.path.join(token_dir_g, f"u{uid}")) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{uid}.json")):
+            if (uid == 1 and os.path.isfile(os.path.join(token_dir_g, "garmin_tokens.json"))) or os.path.isdir(os.path.join(token_dir_g, f"u{uid}")) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{uid}.json")) or (obtener_sesion_plataforma(uid, "garmin") is not None):
                 plataformas.append("Garmin")
         except Exception:
             pass
