@@ -119,18 +119,23 @@ def init_db():
             (1, 'Salva Andreo', 'salva', 'admin', 2, 'salva@teamardil.com', 'SA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'),
             (2, 'Míster (Team Ardil)', 'mister', 'entrenador', None, 'mister@teamardil.com', 'TA', None),
             (3, 'Atleta Compañero', 'amigo', 'atleta', 2, 'amigo@teamardil.com', 'AC', None),
-            (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing')
+            (4, 'Jose Ángel', 'joseangel', 'atleta', 2, 'joseangel@teamardil.com', 'JA', 'https://docs.google.com/document/d/1FrB3aRO878XL7rPsc2T8oS4J-L3qIYemlldzFGnbuj4/edit?tab=t.0#heading=h.wfb0fq8xptvj')
         ]
         cursor.executemany("""
         INSERT INTO usuarios (id, nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, usuarios_seed)
 
-    # Asegurar que Jose Ángel y Salva siempre tengan preservado su Google Doc oficial
+    # Cada atleta tiene su PROPIO documento oficial del entrenador (estrictamente aislados e independientes)
+    cursor.execute("""
+    UPDATE usuarios 
+    SET doc_plan_url = 'https://docs.google.com/document/d/1FrB3aRO878XL7rPsc2T8oS4J-L3qIYemlldzFGnbuj4/edit?tab=t.0#heading=h.wfb0fq8xptvj'
+    WHERE id = 8 OR alias = 'joseangel'
+    """)
     cursor.execute("""
     UPDATE usuarios 
     SET doc_plan_url = 'https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing'
-    WHERE (id = 8 OR alias = 'joseangel') AND (doc_plan_url IS NULL OR doc_plan_url = '')
+    WHERE id = 1 OR alias = 'salva'
     """)
 
     conn.commit()
