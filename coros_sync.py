@@ -213,29 +213,88 @@ def extraer_coros_act_id(act: Dict[str, Any]) -> str:
 
     return ""
 
-def consultar_detalle_actividad_coros(api_base: str, access_token: str, activity_id: str, sport_type: int = 100) -> Optional[Dict[str, Any]]:
-    """Obtiene el detalle y las vueltas (laps) de una actividad COROS específica."""
+SPORT_TYPE_MAP = {
+    100: "running",
+    101: "running",
+    102: "trail_running",
+    103: "track_running",
+    200: "cycling",
+    201: "indoor_cycling",
+    300: "swimming",
+    301: "open_water_swimming",
+    400: "walking"
+}
+
+def consultar_detalle_actividad_coros(
+    api_base: str,
+    access_token: str,
+    activity_id: str,
+    sport_type: int = 100,
+    user_id: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Obtiene el detalle y las vueltas (laps) de una actividad COROS específica.
+    Implementa application/x-www-form-urlencoded (requerido por COROS Training Hub API)
+    con fallbacks robustos a GET y JSON.
+    """
     if not activity_id:
         return None
-    detail_url = f"{api_base}/activity/detail/query"
-    headers = {
-        "accesstoken": access_token,
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
-    }
-    payload = json.dumps({
-        "activityId": str(activity_id),
-        "labelId": str(activity_id),
-        "sportType": sport_type
-    }).encode("utf-8")
 
+    detail_url = f"{api_base}/activity/detail/query"
+    headers_base = {
+        "accesstoken": access_token,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    form_data = {
+        "labelId": str(activity_id),
+        "sportType": str(sport_type)
+    }
+    if user_id:
+        form_data["userId"] = str(user_id)
+
+    # 1. Intento POST application/x-www-form-urlencoded (método oficial COROS Training Hub)
     try:
-        req = urllib.request.Request(detail_url, data=payload, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        body_encoded = urllib.parse.urlencode(form_data).encode("utf-8")
+        h_post = {**headers_base, "Content-Type": "application/x-www-form-urlencoded"}
+        req = urllib.request.Request(detail_url, data=body_encoded, headers=h_post, method="POST")
+        with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data.get("data")
+            if data and data.get("data"):
+                return data.get("data")
     except Exception:
-        return None
+        pass
+
+    # 2. Intento GET /activity/detail?labelId=...&sportType=...
+    try:
+        q_params = urllib.parse.urlencode(form_data)
+        get_url = f"{detail_url}?{q_params}"
+        req_get = urllib.request.Request(get_url, headers=headers_base, method="GET")
+        with urllib.request.urlopen(req_get, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and data.get("data"):
+                return data.get("data")
+    except Exception:
+        pass
+
+    # 3. Intento POST JSON
+    try:
+        json_payload = json.dumps({
+            "activityId": str(activity_id),
+            "labelId": str(activity_id),
+            "sportType": int(sport_type),
+            **({"userId": str(user_id)} if user_id else {})
+        }).encode("utf-8")
+        h_json = {**headers_base, "Content-Type": "application/json"}
+        req_json = urllib.request.Request(detail_url, data=json_payload, headers=h_json, method="POST")
+        with urllib.request.urlopen(req_json, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and data.get("data"):
+                return data.get("data")
+    except Exception:
+        pass
+
+    return None
 
 def parsear_actividad_coros(
     act: Dict[str, Any],
@@ -252,7 +311,6 @@ def parsear_actividad_coros(
     fit_hash = f"coros_u{usuario_id}_{act_id}"
 
     # Fecha
-    # COROS suele almacenar 'startTime' en epoch milisegundos o string 'date' YYYYMMDD
     start_time = act.get("startTime")
     if start_time and isinstance(start_time, (int, float)):
         fecha_dt = datetime.fromtimestamp(start_time / 1000.0 if start_time > 1e11 else start_time)
@@ -276,10 +334,21 @@ def parsear_actividad_coros(
     cadencia_media = act.get("avgCadence") or act.get("avgStepCadence")
     calorias = act.get("calorie") or act.get("calories")
 
+    # Mapeo de deporte para no contaminar atletismo con piscina o ciclismo
+    sport_num = act.get("sportType")
+    deporte = SPORT_TYPE_MAP.get(sport_num, "running")
+    tit_low = titulo.lower()
+    if any(k in tit_low for k in ["ciclismo", "bici", "bike"]):
+        deporte = "cycling"
+    elif any(k in tit_low for k in ["piscina", "natación", "natacion", "swim"]):
+        deporte = "swimming"
+    elif any(k in tit_low for k in ["caminata", "andar", "walk"]):
+        deporte = "walking"
+
     datos_entreno = {
         "fecha": fecha_str,
         "titulo": titulo,
-        "deporte": "running",
+        "deporte": deporte,
         "distancia_km": distancia_km,
         "tiempo_total_s": tiempo_total_s,
         "tiempo_formateado": tiempo_formateado,
@@ -293,31 +362,78 @@ def parsear_actividad_coros(
         "fit_hash": fit_hash
     }
 
-    # Procesar Laps/Vueltas
+    # Procesar Laps/Vueltas reales de COROS
     laps_resultado = []
-    lap_list = []
-    if detail and "lapList" in detail:
-        lap_list = detail["lapList"]
-    elif "lapList" in act:
-        lap_list = act["lapList"]
+    lap_items_extraidos = []
 
-    if lap_list:
-        for idx, lap in enumerate(lap_list):
-            lap_dist = float(lap.get("distance") or 0.0)
-            lap_time = float(lap.get("duration") or lap.get("totalTime") or 0.0)
+    if detail:
+        # Estructura oficial COROS Training Hub: lapList contiene grupos. El grupo con type == -1 son las vueltas reales del atleta
+        raw_lap_list = detail.get("lapList") or []
+        for group in raw_lap_list:
+            if isinstance(group, dict):
+                items = group.get("lapItemList")
+                if items and isinstance(items, list):
+                    # Priorizar type == -1 (vueltas del atleta) o el grupo con más vueltas
+                    if group.get("type") == -1 or not lap_items_extraidos:
+                        lap_items_extraidos = items
+                elif "distance" in group or "totalTime" in group or "duration" in group or "time" in group:
+                    lap_items_extraidos.append(group)
+            elif isinstance(group, list):
+                lap_items_extraidos.extend(group)
+
+        if not lap_items_extraidos:
+            lap_items_extraidos = detail.get("laps") or detail.get("splits") or []
+
+    if not lap_items_extraidos and "lapList" in act:
+        act_laps = act.get("lapList")
+        if isinstance(act_laps, list):
+            for item in act_laps:
+                if isinstance(item, dict) and "lapItemList" in item:
+                    lap_items_extraidos.extend(item["lapItemList"])
+                else:
+                    lap_items_extraidos.append(item)
+
+    if lap_items_extraidos:
+        for idx, lap in enumerate(lap_items_extraidos):
+            # En COROS Training Hub, distancia viene en milímetros (si > 50000 mm = 50 m)
+            raw_dist = float(lap.get("distance") or 0.0)
+            if raw_dist > 50000:
+                lap_dist = round(raw_dist / 1000.0, 2)
+            else:
+                lap_dist = round(raw_dist, 2)
+
+            # Duración puede venir en milisegundos (si > 100000 ms = 100 s)
+            raw_time = float(lap.get("time") or lap.get("duration") or lap.get("totalTime") or 0.0)
+            if raw_time > 100000:
+                lap_time = round(raw_time / 1000.0, 1)
+            else:
+                lap_time = round(raw_time, 1)
+
+            if lap_dist <= 0 and lap_time <= 0:
+                continue
+
+            ritmo_str = calcular_ritmo(lap_dist, lap_time)
+            fc_med = lap.get("avgHr") or lap.get("avgHeartRate")
+            fc_mx = lap.get("maxHr") or lap.get("maxHeartRate")
+            cad = lap.get("avgCadence") or lap.get("cadence") or 0
+
+            # Clasificación de tipo de intervalo
+            tipo_int = "serie" if 150 <= lap_dist <= 3500 else "tramo"
+
             laps_resultado.append({
-                "lap_numero": idx + 1,
+                "lap_numero": int(lap.get("lapIndex") or (idx + 1)),
                 "distancia_m": lap_dist,
                 "tiempo_s": lap_time,
-                "tiempo_formateado": segundos_a_formato(lap_time),
-                "ritmo_minkm": calcular_ritmo(lap_dist, lap_time),
-                "fc_media": int(lap.get("avgHr") or lap.get("avgHeartRate")) if (lap.get("avgHr") or lap.get("avgHeartRate")) else None,
-                "fc_max": int(lap.get("maxHr") or lap.get("maxHeartRate")) if (lap.get("maxHr") or lap.get("maxHeartRate")) else None,
-                "cadencia": int(lap.get("avgCadence") or 0),
-                "tipo_intervalo": "serie" if 350 <= lap_dist <= 1100 else "tramo"
+                "tiempo_formateado": segundos_a_formato(int(lap_time)),
+                "ritmo_minkm": ritmo_str,
+                "fc_media": int(fc_med) if fc_med else None,
+                "fc_max": int(fc_mx) if fc_mx else None,
+                "cadencia": int(cad),
+                "tipo_intervalo": tipo_int
             })
-    else:
-        # Vuelta única por defecto si no hay desglose
+
+    if not laps_resultado:
+        # Vuelta única por defecto solo si no se obtuvo ningún desglose
         laps_resultado.append({
             "lap_numero": 1,
             "distancia_m": distancia_m,
@@ -327,7 +443,7 @@ def parsear_actividad_coros(
             "fc_media": datos_entreno["fc_media"],
             "fc_max": datos_entreno["fc_max"],
             "cadencia": datos_entreno["cadencia_media"] or 0,
-            "tipo_intervalo": "serie"
+            "tipo_intervalo": "serie" if 350 <= distancia_m <= 1100 else "tramo"
         })
 
     return datos_entreno, laps_resultado
@@ -412,6 +528,49 @@ def sincronizar_actividades_coros(
                 ya_existentes += 1
                 consecutivos_existentes += 1
 
+                # Comprobación de enriquecimiento: si ya existe pero solo tiene 1 vuelta dummy en la base de datos,
+                # intentar consultar el detalle de laps para que las series se desglosen correctamente
+                if consecutivos_existentes <= 20:
+                    try:
+                        conn_chk = database.get_connection()
+                        c_chk = conn_chk.cursor()
+                        c_chk.execute(
+                            "SELECT id FROM entrenamientos WHERE (fit_hash = ? OR fit_hash = ?) AND usuario_id = ?",
+                            (fit_hash, f"coros_{act_id}", usuario_id)
+                        )
+                        row_e = c_chk.fetchone()
+                        if row_e:
+                            entreno_id_existente = row_e[0]
+                            c_chk.execute(
+                                "SELECT COUNT(*) FROM series_laps WHERE entrenamiento_id = ?",
+                                (entreno_id_existente,)
+                            )
+                            cnt_laps = c_chk.fetchone()[0]
+                            if cnt_laps <= 1:
+                                user_id_coros = tokens.get("userId") or act.get("userId")
+                                detail = consultar_detalle_actividad_coros(
+                                    api_base, token, act_id, act.get("sportType", 100), user_id=user_id_coros
+                                )
+                                if detail:
+                                    _, nuevas_vueltas = parsear_actividad_coros(act, detail, usuario_id=usuario_id)
+                                    if len(nuevas_vueltas) > 1:
+                                        c_chk.execute("DELETE FROM series_laps WHERE entrenamiento_id = ?", (entreno_id_existente,))
+                                        for nl in nuevas_vueltas:
+                                            c_chk.execute("""
+                                                INSERT INTO series_laps (
+                                                    entrenamiento_id, lap_numero, distancia_m, tiempo_s,
+                                                    tiempo_formateado, ritmo_minkm, fc_media, fc_max, cadencia, tipo_intervalo
+                                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            """, (
+                                                entreno_id_existente, nl["lap_numero"], nl["distancia_m"], nl["tiempo_s"],
+                                                nl["tiempo_formateado"], nl["ritmo_minkm"], nl["fc_media"], nl["fc_max"],
+                                                nl["cadencia"], nl["tipo_intervalo"]
+                                            ))
+                                        conn_chk.commit()
+                        conn_chk.close()
+                    except Exception:
+                        pass
+
                 # En sincronización incremental normal, si encontramos 5 entrenamientos consecutivos ya guardados,
                 # significa que ya hemos alcanzado el último entreno conocido.
                 if not es_modo_historial and tiene_entrenos_previos and consecutivos_existentes >= 5:
@@ -423,7 +582,10 @@ def sincronizar_actividades_coros(
             # Obtener detalle de laps si está disponible
             detail = None
             try:
-                detail = consultar_detalle_actividad_coros(api_base, token, act_id, act.get("sportType", 100))
+                user_id_coros = tokens.get("userId") or act.get("userId")
+                detail = consultar_detalle_actividad_coros(
+                    api_base, token, act_id, act.get("sportType", 100), user_id=user_id_coros
+                )
             except Exception:
                 pass
 
@@ -481,4 +643,85 @@ def sincronizar_actividades_coros(
         "nuevos": nuevos_guardados,
         "existentes": ya_existentes,
         "total": total_analizadas
+    }
+
+def reprocesar_laps_actividades_existentes(usuario_id: int = 8, limite: int = 30) -> Dict[str, Any]:
+    """
+    Recorre las actividades de un usuario que solo tienen 1 vuelta dummy y consulta
+    a COROS para descargar el desglose real de laps y repeticiones de series.
+    """
+    tokens = obtener_tokens_guardados(usuario_id=usuario_id)
+    if not tokens or not tokens.get("accessToken"):
+        return {"status": "error", "mensaje": "No hay sesión activa de COROS para este usuario."}
+
+    api_base = tokens.get("api_base", REGIONS["eu"]["api_base"])
+    token = tokens["accessToken"]
+    user_id_coros = tokens.get("userId")
+
+    conn = database.get_connection()
+    cursor = conn.cursor()
+
+    # Buscar entrenamientos con fit_hash de COROS y que solo tengan 1 vuelta
+    query = """
+    SELECT e.id, e.fit_hash, e.titulo, e.distancia_km, e.tiempo_total_s, e.fecha
+    FROM entrenamientos e
+    JOIN series_laps s ON s.entrenamiento_id = e.id
+    WHERE e.usuario_id = ? AND e.fit_hash LIKE 'coros_%'
+    GROUP BY e.id
+    HAVING COUNT(s.id) <= 1
+    ORDER BY e.fecha DESC
+    LIMIT ?
+    """
+    cursor.execute(query, (usuario_id, limite))
+    candidatos = cursor.fetchall()
+
+    actualizados = 0
+    for entreno in candidatos:
+        entreno_id, fit_hash, tit, dist_km, dur_s, fecha_s = entreno
+        partes = fit_hash.split("_")
+        act_id = partes[-1]
+        if not act_id or not act_id.isdigit():
+            continue
+
+        try:
+            detail = consultar_detalle_actividad_coros(
+                api_base, token, act_id, sport_type=100, user_id=user_id_coros
+            )
+            if detail:
+                dummy_act = {
+                    "distance": dist_km * 1000.0,
+                    "duration": dur_s,
+                    "name": tit,
+                    "startTime": fecha_s
+                }
+                _, laps = parsear_actividad_coros(dummy_act, detail, usuario_id=usuario_id)
+                if len(laps) > 1:
+                    cursor.execute("DELETE FROM series_laps WHERE entrenamiento_id = ?", (entreno_id,))
+                    for l in laps:
+                        cursor.execute("""
+                            INSERT INTO series_laps (
+                                entrenamiento_id, lap_numero, distancia_m, tiempo_s,
+                                tiempo_formateado, ritmo_minkm, fc_media, fc_max, cadencia, tipo_intervalo
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            entreno_id, l["lap_numero"], l["distancia_m"], l["tiempo_s"],
+                            l["tiempo_formateado"], l["ritmo_minkm"], l["fc_media"], l["fc_max"],
+                            l["cadencia"], l["tipo_intervalo"]
+                        ))
+                    actualizados += 1
+                    conn.commit()
+        except Exception:
+            pass
+
+    conn.close()
+    if actualizados > 0:
+        try:
+            database.persistir_base_datos(f"Actualizados laps de {actualizados} sesiones de COROS (usuario {usuario_id}) [skip ci]")
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "mensaje": f"Se han desglosado y actualizado las series de {actualizados} sesiones.",
+        "actualizados": actualizados
     }
