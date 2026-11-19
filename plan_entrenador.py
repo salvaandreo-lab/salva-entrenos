@@ -7,19 +7,29 @@ from html.parser import HTMLParser
 from typing import List, Dict, Any, Tuple, Optional
 import database
 
-DOC_DEFAULT_URL = "https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing"
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config_entrenador.json")
 
-def obtener_doc_url() -> str:
-    """Devuelve la URL del documento de Google Docs configurada."""
+def obtener_doc_url(usuario_id: Optional[int] = None) -> Optional[str]:
+    """
+    Devuelve la URL del documento de Google Docs del atleta correspondiente.
+    Cada atleta es 100% independiente y nunca se devuelve el plan de otro atleta.
+    """
+    if usuario_id is not None:
+        try:
+            u = database.obtener_usuario_por_id(usuario_id)
+            if u and u.get("doc_plan_url"):
+                return u["doc_plan_url"]
+        except Exception:
+            pass
+
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("doc_url", DOC_DEFAULT_URL)
+                return data.get("doc_url")
         except Exception:
             pass
-    return DOC_DEFAULT_URL
+    return None
 
 def guardar_doc_url(url: str):
     """Guarda la URL del documento."""
@@ -28,6 +38,8 @@ def guardar_doc_url(url: str):
 
 def extraer_id_documento(url: str) -> Optional[str]:
     """Extrae el identificador único del Google Doc a partir de su enlace."""
+    if not url:
+        return None
     match = re.search(r'/document/d/([a-zA-Z0-9-_]+)', url)
     return match.group(1) if match else None
 
@@ -114,13 +126,15 @@ def generar_titulo_amigable(texto_plan: str) -> str:
 def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int = 2026) -> List[Dict[str, Any]]:
     """
     Descarga el documento de Google Docs en tiempo real y parsea los días de entrenamiento.
+    PRINCIPIO DE INDEPENDENCIA TOTAL: Cada atleta tiene su propio documento. Si un atleta
+    no tiene URL asignada, se devuelve lista vacía y NUNCA se recurre al plan de otro atleta.
     """
-    if not doc_url:
-        doc_url = obtener_doc_url()
+    if not doc_url or not doc_url.strip():
+        return []
 
     doc_id = extraer_id_documento(doc_url)
     if not doc_id:
-        raise ValueError("No se pudo extraer el ID del documento de Google Docs.")
+        return []
 
     cache_file = os.path.join(os.path.dirname(__file__), f".cache_plan_{doc_id}.json")
 
