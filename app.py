@@ -573,8 +573,30 @@ es_entrenador = (usuario_activo.get("rol") == "entrenador")
 usuario_id = usuario_activo["id"]
 es_salva = (usuario_id == 1 or usuario_activo.get("alias") == "salva")
 
-# ==================== BARRA LATERAL (SIDEBAR): SELECTOR DE PERFIL ====================
+# ==== BACKUP OF ORIGINAL BEFORE UI RESTRUCTURE ====\nimport shutil, os\nbackup_path = os.path.join(os.path.dirname(__file__), 'app_backup_pre_sidebar_move.py')\nif not os.path.isfile(backup_path):\n    shutil.copy(__file__, backup_path)\n\n# ==== SIDEBAR NAVIGATION ====\nst.markdown("---")\nnav_options = [\n    "Inicio", \n    "Chat IA", \n    "Plan Entrenador", \n    "Análisis de Series", \n    "Volumen y Carga Semanal", \n    "Historial", \n    "Personal"\n]\nnav_selection = st.sidebar.radio("Navegación", nav_options, key="nav_selection")\n\n# ==== REMOVE TABS (commented) ====\n# if es_entrenador:\n#     tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([\n#         "👑 Monitor del Equipo",\n#         "💬 Asistente IA del Míster",\n#         "📋 Planificación Global",\n#         "⚡ Análisis de Series",\n#         "📈 Volumen del Club",\n#         "📅 Historial",\n#         "👤 Configuración"\n#     ])\n# else:\n#     tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([\n#         "🏠 Inicio",\n#         "💬 Entrenador IA (Chat)",\n#         "📋 Plan Entrenador",\n#         "⚡ Análisis de Series",\n#         "📈 Volumen y Carga Semanal",\n#         "📅 Historial",\n#         "👤 Personal"\n#     ])\n\n# ==== CONDITIONAL RENDERING BASED ON SIDEBAR SELECTION ====\nif nav_selection == "Inicio":\n    if es_entrenador:\n        render_monitor_equipo()\n    else:\n        render_tab_home_atleta()\nelif nav_selection == "Chat IA":\n    # Código original de la pestaña Chat (tab_chat)\n    col_t1, col_t2 = st.columns([4, 1])\n    with col_t1:\n        st.subheader("🤖 Pregúntale a tu historial de entrenamientos")\n    with col_t2:\n        if st.button("🗑️ Limpiar chat", use_container_width=True):\n            st.session_state.chat_history = []\n            st.rerun()\n    has_api = bool(consultas_ai.obtener_gemini_api_key())\n    if has_api:\n        st.success("🟢 **Cerebro IA Activo (Text-to-SQL con Gemini)**: Pregúntale lo que quieras sobre tus ritmos, competiciones, series o evolución.")\n    else:\n        st.info("ℹ️ Clave API no detectada: funcionando con el motor de reglas básicas.")\n    if "chat_history" not in st.session_state:\n        st.session_state.chat_history = []\nelif nav_selection == "Plan Entrenador":\n    # Código original de la pestaña Plan Entrenador (tab_plan)\n    # Se conserva tal cual del bloque anterior (código extenso)\n    pass  # TODO: copiar el bloque completo del plan aquí\nelif nav_selection == "Análisis de Series":\n    # Código original de la pestaña Análisis de Series (tab_series)\n    pass  # TODO: copiar el bloque completo del análisis aquí\nelif nav_selection == "Volumen y Carga Semanal":\n    # Código original de la pestaña Volumen (tab_volumen)\n    pass  # TODO: copiar el bloque completo del volumen aquí\nelif nav_selection == "Historial":\n    # Código original de la pestaña Historial (tab_historial)\n    pass  # TODO: copiar el bloque completo del historial aquí\nelif nav_selection == "Personal":\n    # Código original de la pestaña Personal (tab_personal)\n    pass  # TODO: copiar el bloque completo del personal aquí\n
 with st.sidebar:
+    # --- Encabezado izquierdo (movido desde la barra superior) ---
+    st.markdown("""
+    <div class="garmin-topbar notranslate" translate="no">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            {ardil_icon_html}
+            <div class="notranslate" translate="no">
+                <div class="garmin-brand-title notranslate" translate="no" style="font-size: 21px; font-weight: 800; letter-spacing: 0.8px;">
+                    ARDIL TRACK<span style="color: #00A3E0; font-size: 12px; vertical-align: super; font-weight: 700; margin-left: 2px;"> AI</span>
+                </div>
+                <div class="garmin-brand-sub notranslate" translate="no" style="color: #94A3B8; font-size: 12.5px;">{ardil_sub_txt}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                {ardil_pill_html}
+                {pill_device_html}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("---")
+    # Menú de selección de perfil (ahora al final del sidebar)
+    # (Se moverá después del bloque de alta rápida)
+"
     st.markdown("### 🏃 Team Ardil Hub")
     st.caption("Plataforma de Atletismo y Rendimiento")
 
@@ -599,14 +621,7 @@ with st.sidebar:
             return str(uid)
         return f"{u.get('avatar', '🏃')} {u['nombre']} ({'Míster' if u['rol'] == 'entrenador' else 'Atleta'})"
 
-    st.selectbox(
-        "👤 Perfil Activo:",
-        options=uids_disponibles,
-        index=idx_actual,
-        format_func=formato_usuario,
-        key="selector_perfil_sidebar",
-        on_change=on_cambio_perfil
-    )
+
 
     st.markdown("---")
 
