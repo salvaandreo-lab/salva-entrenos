@@ -25,10 +25,14 @@ REGIONS = {
     }
 }
 
-def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def obtener_tokens_guardados(usuario_id: Optional[int] = None, *args, **kwargs) -> Optional[Dict[str, Any]]:
     """Devuelve los datos de sesión de COROS para el atleta correspondiente."""
-    if usuario_id:
-        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{usuario_id}.json")
+    uid = usuario_id if usuario_id is not None else kwargs.get("usuario_id")
+    if uid is None and len(args) > 0 and isinstance(args[0], int):
+        uid = args[0]
+
+    if uid:
+        f_user = os.path.join(COROS_TOKENS_DIR, f"coros_tokens_u{uid}.json")
         if os.path.isfile(f_user):
             try:
                 with open(f_user, "r", encoding="utf-8") as f:
@@ -40,7 +44,7 @@ def obtener_tokens_guardados(usuario_id: Optional[int] = None) -> Optional[Dict[
             try:
                 with open(COROS_TOKENS_FILE, "r", encoding="utf-8") as f:
                     d = json.load(f)
-                    if d.get("usuario_id") == usuario_id:
+                    if d.get("usuario_id") == uid:
                         return d
             except Exception:
                 pass
