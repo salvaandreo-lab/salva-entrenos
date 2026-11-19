@@ -26,11 +26,18 @@ def init_db():
         email TEXT,
         avatar TEXT DEFAULT '🏃',
         doc_plan_url TEXT,
+        plataforma_principal TEXT DEFAULT 'garmin',
         activo INTEGER DEFAULT 1,
         fecha_creacion TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (entrenador_id) REFERENCES usuarios(id)
     )
     """)
+
+    # Migración de columna de plataforma principal por atleta si no existiera
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN plataforma_principal TEXT DEFAULT 'garmin'")
+    except Exception:
+        pass
 
     # 2. Tabla de entrenamientos generales
     cursor.execute("""
@@ -174,8 +181,9 @@ def obtener_usuario_por_id(usuario_id: int) -> Optional[Dict[str, Any]]:
 
 def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", entrenador_id: Optional[int] = 2,
                                email: str = "", avatar: str = "🏃", doc_plan_url: Optional[str] = None,
+                               plataforma_principal: Optional[str] = None,
                                usuario_id: Optional[int] = None, sync_remoto: bool = True) -> int:
-    """Crea un nuevo atleta o actualiza su perfil de forma segura y permanente, preservando siempre su enlace a Google Docs."""
+    """Crea un nuevo atleta o actualiza su perfil de forma segura y permanente, preservando siempre su enlace a Google Docs y su dispositivo principal."""
     conn = get_connection()
     cursor = conn.cursor()
     alias_clean = alias.lower().strip()
@@ -185,29 +193,55 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
 
     if usuario_id:
         if doc_url_valida:
-            cursor.execute("""
-            UPDATE usuarios SET
-                nombre = ?,
-                alias = ?,
-                rol = ?,
-                entrenador_id = ?,
-                email = ?,
-                avatar = ?,
-                doc_plan_url = ?
-            WHERE id = ?
-            """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida, usuario_id))
+            if plataforma_principal:
+                cursor.execute("""
+                UPDATE usuarios SET
+                    nombre = ?,
+                    alias = ?,
+                    rol = ?,
+                    entrenador_id = ?,
+                    email = ?,
+                    avatar = ?,
+                    doc_plan_url = ?,
+                    plataforma_principal = ?
+                WHERE id = ?
+                """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida, plataforma_principal.lower().strip(), usuario_id))
+            else:
+                cursor.execute("""
+                UPDATE usuarios SET
+                    nombre = ?,
+                    alias = ?,
+                    rol = ?,
+                    entrenador_id = ?,
+                    email = ?,
+                    avatar = ?,
+                    doc_plan_url = ?
+                WHERE id = ?
+                """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida, usuario_id))
         else:
-            # PRESERVAR estrictamente la que ya tenga el usuario (NUNCA borrar ni sobreescribir con vacío o None)
-            cursor.execute("""
-            UPDATE usuarios SET
-                nombre = ?,
-                alias = ?,
-                rol = ?,
-                entrenador_id = ?,
-                email = ?,
-                avatar = ?
-            WHERE id = ?
-            """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, usuario_id))
+            if plataforma_principal:
+                cursor.execute("""
+                UPDATE usuarios SET
+                    nombre = ?,
+                    alias = ?,
+                    rol = ?,
+                    entrenador_id = ?,
+                    email = ?,
+                    avatar = ?,
+                    plataforma_principal = ?
+                WHERE id = ?
+                """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, plataforma_principal.lower().strip(), usuario_id))
+            else:
+                cursor.execute("""
+                UPDATE usuarios SET
+                    nombre = ?,
+                    alias = ?,
+                    rol = ?,
+                    entrenador_id = ?,
+                    email = ?,
+                    avatar = ?
+                WHERE id = ?
+                """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, usuario_id))
         conn.commit()
         conn.close()
         if sync_remoto:
@@ -222,11 +256,12 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
         return row[0] if row else 1
 
     # Comprobar si ya existe por alias para actualizarlo preservando doc_plan_url
-    cursor.execute("SELECT id, doc_plan_url FROM usuarios WHERE alias = ?", (alias_clean,))
+    cursor.execute("SELECT id, doc_plan_url, plataforma_principal FROM usuarios WHERE alias = ?", (alias_clean,))
     existente = cursor.fetchone()
     if existente:
-        uid_existente, url_existente = existente[0], existente[1]
+        uid_existente, url_existente, plat_existente = existente[0], existente[1], (existente[2] if len(existente) > 2 else "garmin")
         url_final = doc_url_valida or url_existente
+        plat_final = plataforma_principal.lower().strip() if plataforma_principal else (plat_existente or "garmin")
         cursor.execute("""
         UPDATE usuarios SET
             nombre = ?,
@@ -234,19 +269,21 @@ def crear_o_actualizar_usuario(nombre: str, alias: str, rol: str = "atleta", ent
             entrenador_id = ?,
             email = ?,
             avatar = ?,
-            doc_plan_url = ?
+            doc_plan_url = ?,
+            plataforma_principal = ?
         WHERE id = ?
-        """, (nombre.strip(), rol, entrenador_id, email, avatar, url_final, uid_existente))
+        """, (nombre.strip(), rol, entrenador_id, email, avatar, url_final, plat_final, uid_existente))
         conn.commit()
         conn.close()
         if sync_remoto:
             persistir_base_datos(f"Actualizado atleta '{nombre}' [skip ci]")
         return uid_existente
 
+    plat_def = plataforma_principal.lower().strip() if plataforma_principal else ("coros" if "jose" in alias_clean else "garmin")
     cursor.execute("""
-    INSERT INTO usuarios (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida))
+    INSERT INTO usuarios (nombre, alias, rol, entrenador_id, email, avatar, doc_plan_url, plataforma_principal)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (nombre.strip(), alias_clean, rol, entrenador_id, email, avatar, doc_url_valida, plat_def))
     conn.commit()
     uid = cursor.lastrowid
     conn.close()
@@ -978,6 +1015,10 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
                 plataformas.append("Strava")
         except Exception:
             pass
+        if not plataformas:
+            plat_p = a.get("plataforma_principal")
+            if plat_p:
+                plataformas.append("COROS" if plat_p.lower() == "coros" else ("Garmin" if plat_p.lower() == "garmin" else plat_p.capitalize()))
         a["plataformas"] = plataformas
 
     conn.close()
