@@ -939,11 +939,9 @@ def obtener_resumen_equipo(entrenador_id: Optional[int] = None) -> Dict[str, Any
             a["ultimo_tiempo"] = None
             a["ultimo_origen"] = None
 
-        # Plan previsto para hoy
+        # Plan previsto para hoy (100% independiente para cada atleta según su propio documento)
         a["plan_hoy"] = None
         doc_url = a.get("doc_plan_url")
-        if not doc_url and uid == 1:
-            doc_url = "https://docs.google.com/document/d/1rUeBFG0vL3ZaOXP5nxQKOPA5MVtfr_NuQWOWZ51VodM/edit?usp=sharing"
         if doc_url:
             try:
                 import plan_entrenador
