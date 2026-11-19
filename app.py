@@ -538,7 +538,8 @@ if marcas_conectadas:
     dispositivo_txt = " · ".join(marcas_conectadas)
     pill_device_html = f"<span>⌚ {dispositivo_txt}</span><span style='color: #64748B;'>|</span><span style='color: #10B981; font-weight: 700;'>● Conectado</span>"
 else:
-    plat_pref_tag = (usuario_activo.get("plataforma_principal") or "Dispositivo").upper()
+    u_chk = database.obtener_usuario_por_id(curr_uid_chk)
+    plat_pref_tag = ((u_chk.get("plataforma_principal") if u_chk else None) or "Dispositivo").upper()
     pill_device_html = f"<span>⌚ {plat_pref_tag}</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
 
 def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None) -> Tuple[int, int, str]:
