@@ -77,6 +77,7 @@ def sync_all():
         "team_ardil_bg.jpg",
         "team_ardil_caballo_sq.jpg",
         "team_ardil_intro.mp4",
+        "team_ardil_intro_v2.mp4",
         "AGENTS.md",
         "GEMINI.md",
         ".streamlit/config.toml",
