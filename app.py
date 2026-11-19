@@ -67,35 +67,57 @@ if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_pa
     with intro_ph.container():
         st.markdown("""
         <style>
-        /* Ocultar elementos de Streamlit durante la intro */
+        /* Ocultar barra superior, decoración, sidebar y cualquier elemento durante la intro */
         [data-testid="stSidebar"],
-        header[data-testid="stHeader"],
+        header,
+        [data-testid="stHeader"],
+        [data-testid="stDecoration"],
+        [data-testid="stToolbar"],
+        [data-testid="stStatusWidget"],
         footer,
-        .stDeployButton {
+        .stDeployButton,
+        .goog-te-banner-frame,
+        #goog-gt-tt,
+        .skiptranslate {
             display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            opacity: 0 !important;
         }
-        .main .block-container {
+        body, html, [data-testid="stAppViewContainer"], .main, .block-container {
+            background-color: #000000 !important;
+            overflow: hidden !important;
             padding: 0 !important;
-            max-width: 100vw !important;
             margin: 0 !important;
         }
         div[data-testid="stVideo"] {
             position: fixed !important;
             top: 0 !important;
             left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
             width: 100vw !important;
             height: 100vh !important;
-            z-index: 99999999 !important;
+            z-index: 2147483647 !important;
             background: #000000 !important;
             display: flex !important;
+            flex-direction: column !important;
             align-items: center !important;
             justify-content: center !important;
+            padding-bottom: 7vh !important;
+            margin: 0 !important;
+            pointer-events: none !important;
         }
         div[data-testid="stVideo"] video {
-            width: 100vw !important;
-            height: 100vh !important;
-            object-fit: cover !important;
+            max-width: 95vw !important;
+            max-height: 82vh !important;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain !important;
             background: #000000 !important;
+        }
+        div[data-testid="stVideo"] video::-webkit-media-controls {
+            display: none !important;
         }
         </style>
         """, unsafe_allow_html=True)
