@@ -60,7 +60,10 @@ components.html(
 )
 
 # Video Intro Splash Screen (se muestra a pantalla completa durante 5 segundos)
-v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
+v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro_v2.mp4")
+if not os.path.isfile(v_intro_path):
+    v_intro_path = os.path.join(os.path.dirname(__file__), "team_ardil_intro.mp4")
+
 if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_path):
     st.session_state["splash_intro_mostrada"] = True
     intro_ph = st.empty()
@@ -103,18 +106,25 @@ if "splash_intro_mostrada" not in st.session_state and os.path.isfile(v_intro_pa
             display: flex !important;
             flex-direction: column !important;
             align-items: center !important;
-            justify-content: center !important;
+            justify-content: flex-start !important;
+            padding-top: 5vh !important;
             margin: 0 !important;
             pointer-events: none !important;
+            animation: ardilFade 5.0s ease-in-out forwards !important;
+        }
+        @keyframes ardilFade {
+            0% { opacity: 0; }
+            14% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
         }
         div[data-testid="stVideo"] video {
-            max-width: 95vw !important;
-            max-height: 82vh !important;
+            max-width: 96vw !important;
+            max-height: 80vh !important;
             width: auto !important;
             height: auto !important;
             object-fit: contain !important;
             background: #000000 !important;
-            transform: translateY(-2cm) !important;
         }
         div[data-testid="stVideo"] video::-webkit-media-controls {
             display: none !important;
