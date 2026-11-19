@@ -2781,24 +2781,46 @@ def render_sincronizar_coros():
     with col_c2:
         st.caption("Compatible con COROS Training Hub Europa y Global.")
 
-    sesion_coros = coros_sync.obtener_tokens_guardados()
+    sesion_coros = coros_sync.obtener_tokens_guardados(usuario_id=usuario_id)
     if sesion_coros:
         st.success(f"✅ **Sesión de COROS activa:** `{sesion_coros.get('account')}` (Región: {sesion_coros.get('region', 'eu').upper()})")
         if sesion_coros.get("last_sync"):
             st.caption(f"🕒 Última sincronización: {sesion_coros.get('last_sync')}")
 
-        col_sync, col_logout = st.columns([3, 1])
-        with col_sync:
-            if st.button("🔄 Sincronizar", type="primary", key="btn_sync_coros_panel", use_container_width=True):
-                p_bar = st.progress(0)
+        col_sync1, col_sync2, col_logout = st.columns([2.5, 2.5, 1.2])
+        with col_sync1:
+            if st.button("🔄 Sincronizar Nuevos (Rápido)", type="primary", key="btn_sync_coros_inc", use_container_width=True):
                 st_text = st.empty()
 
                 def update_coros_p(act, tot, name):
-                    pct = min(1.0, act / max(1, tot))
-                    p_bar.progress(pct)
-                    st_text.text(f"Importando {act}/{tot}: {name}")
+                    st_text.text(f"Comprobando entreno {act}: {name}")
 
-                res = coros_sync.sincronizar_actividades_coros(progreso_callback=update_coros_p, usuario_id=usuario_id)
+                with st.spinner("Buscando entrenamientos nuevos en COROS..."):
+                    res = coros_sync.sincronizar_actividades_coros(
+                        progreso_callback=update_coros_p,
+                        usuario_id=usuario_id,
+                        historial_completo=False
+                    )
+                if res["status"] == "ok":
+                    st.success(f"🎉 {res['mensaje']}")
+                    st.rerun()
+                else:
+                    st.error(res["mensaje"])
+
+        with col_sync2:
+            if st.button("📥 Descargar Historial Completo", key="btn_sync_coros_full", use_container_width=True,
+                         help="Descarga todas las actividades históricas desde el inicio de tu cuenta de COROS."):
+                st_text = st.empty()
+
+                def update_coros_p(act, tot, name):
+                    st_text.text(f"Descargando histórico ({act} analizadas): {name}")
+
+                with st.spinner("Descargando todo el historial de COROS hacia atrás..."):
+                    res = coros_sync.sincronizar_actividades_coros(
+                        progreso_callback=update_coros_p,
+                        usuario_id=usuario_id,
+                        historial_completo=True
+                    )
                 if res["status"] == "ok":
                     st.success(f"🎉 {res['mensaje']}")
                     st.rerun()
@@ -2806,8 +2828,8 @@ def render_sincronizar_coros():
                     st.error(res["mensaje"])
 
         with col_logout:
-            if st.button("🚪 Cerrar sesión COROS", use_container_width=True):
-                coros_sync.cerrar_sesion_coros()
+            if st.button("🚪 Cerrar sesión", use_container_width=True):
+                coros_sync.cerrar_sesion_coros(usuario_id=usuario_id)
                 st.success("Sesión cerrada correctamente.")
                 st.rerun()
     else:
@@ -2827,7 +2849,7 @@ def render_sincronizar_coros():
                     st.error("Por favor, introduce tu email y contraseña de COROS.")
                 else:
                     with st.spinner("Conectando y autenticando con COROS Training Hub..."):
-                        ok, msg, _ = coros_sync.iniciar_sesion_coros(c_email, c_pass, region_key=c_reg)
+                        ok, msg, _ = coros_sync.iniciar_sesion_coros(c_email, c_pass, region_key=c_reg, usuario_id=usuario_id)
                         if ok:
                             st.success(msg)
                             st.rerun()
