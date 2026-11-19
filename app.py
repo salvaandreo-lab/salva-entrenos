@@ -851,18 +851,20 @@ media_km = round(total_km / max(1, total_entrenos), 1)
 # Enlace del plan oficial individual del atleta activo (estrictamente aislado)
 doc_url = usuario_activo.get("doc_plan_url")
 
-@st.cache_data(ttl=120)
-def cargar_plan_y_comparativa(url_doc, u_id=1):
+@st.cache_data(ttl=60)
+def descargar_plan_cached(url_doc):
     if not url_doc:
-        return [], {"comparativa": [], "preguntas_discrepancias": []}
+        return []
     try:
-        p_dias = plan_entrenador.descargar_plan_entrenador(url_doc)
-        reconc = plan_entrenador.conciliar_plan_con_garmin(p_dias, usuario_id=u_id)
-        return p_dias, reconc
-    except Exception as e:
-        return [], {"comparativa": [], "preguntas_discrepancias": []}
+        return plan_entrenador.descargar_plan_entrenador(url_doc)
+    except Exception:
+        return []
 
-plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url, u_id=usuario_id)
+plan_dias = descargar_plan_cached(doc_url)
+try:
+    reconciliacion = plan_entrenador.conciliar_plan_con_garmin(plan_dias, usuario_id=usuario_id) if plan_dias else {"comparativa": [], "preguntas_discrepancias": []}
+except Exception:
+    reconciliacion = {"comparativa": [], "preguntas_discrepancias": []}
 comparativa_plan = reconciliacion.get("comparativa", [])
 
 def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str = "", plan_comparativa: list = None) -> bool:
@@ -1915,13 +1917,17 @@ with tab_plan:
             st.info(f"🔗 **Documento activo de {usuario_activo['nombre']}**: [Abrir Google Doc de tu Planificación]({doc_url})")
         with col_p2:
             if st.button("🔄 Comprobar cambios ahora", use_container_width=True, key="btn_check_plan_now"):
-                cargar_plan_y_comparativa.clear()
+                descargar_plan_cached.clear()
                 st.success("Plan recargado en vivo directamente desde Google Docs.")
                 st.rerun()
     else:
         st.warning(f"⚠️ **{usuario_activo['nombre']} no tiene asignado un enlace de Google Docs con su planificación.** Cada atleta cuenta con un documento independiente.")
 
-    plan_dias, reconciliacion = cargar_plan_y_comparativa(doc_url, u_id=usuario_id)
+    plan_dias = descargar_plan_cached(doc_url)
+    try:
+        reconciliacion = plan_entrenador.conciliar_plan_con_garmin(plan_dias, usuario_id=usuario_id) if plan_dias else {"comparativa": [], "preguntas_discrepancias": []}
+    except Exception:
+        reconciliacion = {"comparativa": [], "preguntas_discrepancias": []}
     comparativa = reconciliacion.get("comparativa", [])
     preguntas = reconciliacion.get("preguntas_discrepancias", [])
 
