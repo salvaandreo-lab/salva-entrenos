@@ -87,7 +87,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 
 [data-testid="stHeader"] {{
     background-color: transparent !important;
-    z-index: 100 !important;
+    z-index: 9999 !important;
 }}
 
 [data-testid="stHeader"] [data-testid="stToolbar"] {{
@@ -98,15 +98,38 @@ html, body, [data-testid="stAppViewContainer"] {{
     display: none !important;
 }}
 
+/* Flechas para abrir la barra lateral (lado izquierdo arriba) */
 [data-testid="stSidebarCollapsedControl"],
+button[data-testid="stSidebarCollapsedControl"],
 [data-testid="collapsedControl"] {{
     display: flex !important;
     visibility: visible !important;
-    color: #181C20 !important;
+    opacity: 1 !important;
+    color: #007CC3 !important;
     background: #FFFFFF !important;
+    border: 1.5px solid #007CC3 !important;
     border-radius: 8px !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
-    z-index: 999999 !important;
+    box-shadow: 0 2px 10px rgba(0, 124, 195, 0.25) !important;
+    margin-left: 12px !important;
+    margin-top: 10px !important;
+    z-index: 9999999 !important;
+    cursor: pointer !important;
+}}
+
+[data-testid="stSidebarCollapsedControl"] svg,
+button[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="collapsedControl"] svg {{
+    fill: #007CC3 !important;
+    stroke: #007CC3 !important;
+    color: #007CC3 !important;
+    width: 22px !important;
+    height: 22px !important;
+}}
+
+[data-testid="stSidebarCollapsedControl"]:hover,
+button[data-testid="stSidebarCollapsedControl"]:hover {{
+    background: #E8F4FA !important;
+    box-shadow: 0 4px 14px rgba(0, 124, 195, 0.35) !important;
 }}
 
 [data-testid="stMain"] {{
@@ -116,7 +139,7 @@ html, body, [data-testid="stAppViewContainer"] {{
 .main .block-container {{
     background: transparent !important;
     max-width: 1400px !important;
-    padding-top: 0.4rem !important;
+    padding-top: 3.2rem !important;
 }}
 
 /* Topbar Ardil Track */
@@ -589,9 +612,23 @@ if st.session_state["usuario_id_activo"] not in ids_validos:
     st.session_state["usuario_id_activo"] = 1
 
 usuario_activo = next((u for u in usuarios_db if u["id"] == st.session_state["usuario_id_activo"]), usuarios_db[0])
-es_entrenador = (usuario_activo.get("rol") == "entrenador")
+es_admin = (usuario_activo.get("rol") in ("admin", "administrador") or usuario_activo.get("id") == 1 or usuario_activo.get("alias") == "salva")
+es_entrenador = (usuario_activo.get("rol") == "entrenador" or usuario_activo.get("id") == 2)
 usuario_id = usuario_activo["id"]
 es_salva = (usuario_id == 1 or usuario_activo.get("alias") == "salva")
+
+def formato_usuario(uid):
+    u = next((item for item in usuarios_db if item["id"] == uid), None)
+    if not u:
+        return str(uid)
+    rol_txt = "👑 Admin" if (u.get("rol") in ("admin", "administrador") or u.get("id") == 1) else ("👨‍🏫 Míster" if u.get("rol") == "entrenador" else "🏃 Atleta")
+    return f"{u.get('avatar', '🏃')} {u['nombre']} ({rol_txt})"
+
+# Sincronizar keys de selector para que no haya desajustes
+if "selector_perfil_sidebar" not in st.session_state or st.session_state["selector_perfil_sidebar"] != st.session_state["usuario_id_activo"]:
+    st.session_state["selector_perfil_sidebar"] = st.session_state["usuario_id_activo"]
+if "selector_perfil_top" not in st.session_state or st.session_state["selector_perfil_top"] != st.session_state["usuario_id_activo"]:
+    st.session_state["selector_perfil_top"] = st.session_state["usuario_id_activo"]
 
 # ==================== BARRA LATERAL (SIDEBAR): SELECTOR DE PERFIL ====================
 with st.sidebar:
@@ -610,14 +647,9 @@ with st.sidebar:
         uid_sel = st.session_state.get("selector_perfil_sidebar")
         if uid_sel:
             st.session_state["usuario_id_activo"] = uid_sel
+            st.session_state["selector_perfil_top"] = uid_sel
             if uid_sel == 2:
                 st.session_state["mister_inspeccionando"] = False
-
-    def formato_usuario(uid):
-        u = next((item for item in usuarios_db if item["id"] == uid), None)
-        if not u:
-            return str(uid)
-        return f"{u.get('avatar', '🏃')} {u['nombre']} ({'Míster' if u['rol'] == 'entrenador' else 'Atleta'})"
 
     st.selectbox(
         "👤 Perfil Activo:",
@@ -708,7 +740,12 @@ ardil_pill_html = f'<div class="notranslate" translate="no" style="display: flex
 
 # Siempre mostrar el atleta activo en el subtítulo para saber a quién se consulta
 nombre_activo_disp = usuario_activo.get("nombre", "Atleta")
-ardil_sub_txt = f"Team Ardil · Athletics Coach | {nombre_activo_disp}"
+if es_admin and usuario_id == 1:
+    ardil_sub_txt = f"Team Ardil · Administrador | {nombre_activo_disp}"
+elif es_entrenador:
+    ardil_sub_txt = f"Team Ardil · Panel de Control del Entrenador | {nombre_activo_disp}"
+else:
+    ardil_sub_txt = f"Team Ardil · Athletics Coach | {nombre_activo_disp}"
 
 st.markdown(f"""
 <div class="garmin-topbar notranslate" translate="no">
@@ -727,6 +764,29 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+# Selector rápido de Atleta / Perfil (visible para Salva/Admin y Míster sin necesidad de abrir la barra lateral)
+col_prof_sel, col_prof_tag = st.columns([3.8, 1.2])
+with col_prof_sel:
+    def on_cambio_perfil_top():
+        uid_t = st.session_state.get("selector_perfil_top")
+        if uid_t:
+            st.session_state["usuario_id_activo"] = uid_t
+            st.session_state["selector_perfil_sidebar"] = uid_t
+            if uid_t == 2:
+                st.session_state["mister_inspeccionando"] = False
+
+    st.selectbox(
+        "👥 Seleccionar Atleta / Perfil (Acceso directo):",
+        options=uids_disponibles,
+        index=idx_actual,
+        format_func=formato_usuario,
+        key="selector_perfil_top",
+        on_change=on_cambio_perfil_top
+    )
+with col_prof_tag:
+    badge_label = "👑 Administrador" if (es_admin and usuario_id == 1) else ("👨‍🏫 Míster" if es_entrenador else "🏃 Atleta")
+    st.markdown(f"<div style='padding-top: 28px;'><span style='background: #E8F4FA; color: #007CC3; border: 1.5px solid #007CC3; padding: 7px 12px; border-radius: 8px; font-weight: 700; font-size: 13px; display: block; text-align: center; box-shadow: 0 2px 6px rgba(0,124,195,0.12);'>{badge_label}</span></div>", unsafe_allow_html=True)
 
 if st.session_state.get("mister_inspeccionando") and not es_entrenador:
     col_insp1, col_insp2 = st.columns([4, 1.2])
@@ -1453,7 +1513,7 @@ def render_tab_home_atleta():
         st.markdown("</div>", unsafe_allow_html=True)
 
 # Pestañas principales organizadas de forma limpia
-if es_entrenador:
+if es_entrenador and not es_admin:
     tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([
         "👑 Monitor del Equipo",
         "💬 Asistente IA del Míster",
@@ -1462,6 +1522,18 @@ if es_entrenador:
         "📈 Volumen del Club",
         "📅 Historial",
         "👤 Configuración"
+    ])
+    tab_monitor = None
+elif es_admin:
+    tab_home, tab_monitor, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([
+        "🏠 Inicio",
+        "👑 Monitor del Equipo",
+        "💬 Entrenador IA (Chat)",
+        "📋 Plan Entrenador",
+        "⚡ Análisis de Series",
+        "📈 Volumen y Carga Semanal",
+        "📅 Historial",
+        "👤 Personal"
     ])
 else:
     tab_home, tab_chat, tab_plan, tab_series, tab_volumen, tab_historial, tab_personal = st.tabs([
@@ -1473,13 +1545,18 @@ else:
         "📅 Historial",
         "👤 Personal"
     ])
+    tab_monitor = None
 
 # ==================== PESTAÑA 0: INICIO O MONITOR DE EQUIPO ====================
 with tab_home:
-    if es_entrenador:
+    if es_entrenador and not es_admin:
         render_monitor_equipo()
     else:
         render_tab_home_atleta()
+
+if tab_monitor is not None:
+    with tab_monitor:
+        render_monitor_equipo()
 
 
 
