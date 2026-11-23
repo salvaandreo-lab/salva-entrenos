@@ -171,6 +171,13 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
     # Intentar login usando tokens guardados si existen
     try:
         client.login(tokenstore=tokenstore_dir)
+        try:
+            if os.path.isfile(token_json_file):
+                with open(token_json_file, "r", encoding="utf-8") as f:
+                    updated_tokens = json.load(f)
+                database.guardar_sesion_plataforma(target_uid, "garmin", updated_tokens)
+        except Exception as e_tok:
+            print(f"Aviso guardando tokens Garmin en DB: {e_tok}")
         return client, "Conexión exitosa"
     except Exception as e:
         if not password:
