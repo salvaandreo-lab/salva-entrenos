@@ -383,6 +383,9 @@ def aplicar_etiquetas_entrenador(comparativa: List[Dict[str, Any]]) -> int:
     for item in comparativa:
         e = item.get("garmin_entreno")
         if e and item.get("titulo_sugerido"):
+            if item.get("es_descanso"):
+                # No sobreescribir el título de un entreno real con "Descanso"
+                continue
             nuevo_titulo = item["titulo_sugerido"]
             notas = item.get("plan_descripcion", "")
 
