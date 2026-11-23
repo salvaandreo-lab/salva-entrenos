@@ -669,7 +669,7 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
             else:
                 mensajes.append("Garmin al día")
         except Exception as e:
-            mensajes.append(f"Garmin: {e}")
+            mensajes.append(f"Garmin error: {e}")
 
     # 2. COROS Training Hub (solo si este atleta específico tiene sesión de COROS)
     if coros_sync.obtener_tokens_guardados(usuario_id=target_u):
