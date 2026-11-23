@@ -152,6 +152,9 @@ def init_db():
 # ==================== FUNCIONES DE GESTIÓN DE USUARIOS / ATLETAS ====================
 def persistir_base_datos(commit_msg: str = "Actualización de base de datos [skip ci]") -> bool:
     """Sincroniza sporttracks.db con el repositorio de GitHub para persistencia permanente en Streamlit Cloud."""
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        # En el entorno de GitHub Actions el workflow se encarga de commitear y pushear los cambios al final
+        return True
     try:
         import sync_sporttracks
         return sync_sporttracks.sync_file("sporttracks.db", commit_msg=commit_msg)
