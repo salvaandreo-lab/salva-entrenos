@@ -18,7 +18,7 @@ def ejecutar_auto_sync():
     nuevos_totales = 0
 
     # ==================== 1. GARMIN CONNECT ====================
-    # Salva (id 1): tokens desde secreto o disco
+    # Salva (id 1): tokens desde secreto, base de datos o disco
     tokens_env_g = os.environ.get("GARMIN_TOKENS_JSON")
     token_dir_g = os.path.join(BASE_DIR, ".garmin_tokens")
     token_file_g1 = os.path.join(token_dir_g, "garmin_tokens.json")
@@ -28,6 +28,13 @@ def ejecutar_auto_sync():
         with open(token_file_g1, "w", encoding="utf-8") as f:
             f.write(tokens_env_g)
         print("✅ Tokens de Garmin para Salva (id 1) cargados desde GitHub Secrets.")
+    elif not os.path.isfile(token_file_g1):
+        db_tok = database.obtener_sesion_plataforma(1, "garmin")
+        if db_tok:
+            os.makedirs(token_dir_g, exist_ok=True)
+            with open(token_file_g1, "w", encoding="utf-8") as f:
+                json.dump(db_tok, f, indent=2)
+            print("✅ Tokens de Garmin para Salva (id 1) restaurados desde la base de datos.")
 
     # Sincronizar Garmin para Salva (u1) si existen tokens
     if os.path.isfile(token_file_g1):
@@ -93,6 +100,23 @@ def ejecutar_auto_sync():
                     nuevos_totales += res_s.get("nuevos", 0)
                 except Exception as e_s:
                     print(f"❌ Error en Strava (atleta {uid}): {e_s}")
+
+    # ==================== 4. RECONCILIACIÓN CON EL PLAN DEL MÍSTER ====================
+    try:
+        import plan_entrenador
+        usuarios = database.obtener_usuarios()
+        for u in usuarios:
+            u_id = u["id"]
+            doc_url = plan_entrenador.obtener_doc_url(u_id)
+            if doc_url:
+                dias = plan_entrenador.descargar_plan_entrenador(doc_url)
+                if dias:
+                    res_plan = plan_entrenador.conciliar_plan_con_garmin(dias, usuario_id=u_id)
+                    actualizados = plan_entrenador.aplicar_etiquetas_entrenador(res_plan.get("comparativa", []))
+                    if actualizados > 0:
+                        print(f"✅ Plan del míster aplicado para {u.get('nombre', f'atleta {u_id}')}: {actualizados} entrenos etiquetados.")
+    except Exception as e_p:
+        print(f"Aviso al conciliar plan del míster en auto-sync: {e_p}")
 
     return nuevos_totales
 
