@@ -269,12 +269,12 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]], usuario_id: int =
             mapa_reales[f_dia] = []
         mapa_reales[f_dia].append(e)
 
-    comparativa = []
-    preguntas_discrepancias = []
-    ids_reales_asignados = set()
-
     hoy_str = datetime.now().strftime("%Y-%m-%d")
+    ids_reales_asignados = set()
+    items_map = {}
+    preguntas_discrepancias = []
 
+    # ==================== PASO 1: EMPAREJAMIENTO EXACTO POR FECHA ====================
     for p in plan_dias:
         f_plan = p["fecha"]
         plan_desc = p["descripcion"]
@@ -292,14 +292,13 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]], usuario_id: int =
             "diferencia_dias": 0
         }
 
-        # 1. Comprobar si hay entreno en la fecha exacta
+        # Comprobar si hay entreno en la fecha exacta
         if f_plan in mapa_reales and mapa_reales[f_plan]:
-            # Si hay varios en el mismo día (ej. calentamiento + carrera/rodaje), asignar el de mayor distancia
             candidatos_dia = mapa_reales[f_plan]
             e_real = max(candidatos_dia, key=lambda x: x["distancia_km"])
             item["garmin_entreno"] = e_real
 
-            # Asignar todos los entrenos de ese día para evitar que micro-calentamientos queden huérfanos
+            # Registrar todos los entrenos de ese día como asignados a su fecha exacta
             for cand in candidatos_dia:
                 ids_reales_asignados.add(cand["id"])
 
@@ -320,51 +319,60 @@ def conciliar_plan_con_garmin(plan_dias: List[Dict[str, Any]], usuario_id: int =
             else:
                 item["estado"] = "📅 Futuro"
         else:
-            # 2. Si es hoy y no hay entreno registrado aún
             if f_plan == hoy_str:
                 item["estado"] = "⏳ Programado para hoy"
-            elif f_plan < hoy_str:
-                # 3. Solo para días pasados: buscar si se movió a ±1 o ±2 días
-                f_dt = datetime.strptime(f_plan, "%Y-%m-%d")
-                desplazado_encontrado = None
-
-                for offset in [1, -1, 2, -2]:
-                    f_cand = (f_dt + timedelta(days=offset)).strftime("%Y-%m-%d")
-                    if f_cand in mapa_reales:
-                        for cand in mapa_reales[f_cand]:
-                            if cand["id"] not in ids_reales_asignados:
-                                desplazado_encontrado = (cand, offset, f_cand)
-                                break
-                    if desplazado_encontrado:
-                        break
-
-                if desplazado_encontrado:
-                    e_mov, offset, f_mov = desplazado_encontrado
-                    item["garmin_entreno"] = e_mov
-                    item["diferencia_dias"] = offset
-                    item["estado"] = f"🔄 Movido ({'+' if offset > 0 else ''}{offset} días)"
-                    ids_reales_asignados.add(e_mov["id"])
-
-                    preguntas_discrepancias.append({
-                        "tipo": "entreno_movido",
-                        "plan_fecha": f_plan,
-                        "real_fecha": f_mov,
-                        "entreno_id": e_mov["id"],
-                        "plan_desc": p["titulo_sugerido"],
-                        "mensaje": f"¿El entrenamiento del {p['dia_semana']} {f_plan} (*{p['titulo_sugerido']}*) lo realizaste el día {f_mov}? En tu Garmin aparece ese día una sesión de {e_mov['distancia_km']} km (*{e_mov['titulo']}*)."
-                    })
-                else:
-                    item["estado"] = "❌ No registrado en Garmin"
-                    preguntas_discrepancias.append({
-                        "tipo": "no_realizado",
-                        "plan_fecha": f_plan,
-                        "plan_desc": p["titulo_sugerido"],
-                        "mensaje": f"El entrenamiento del {p['dia_semana']} {f_plan} (*{p['titulo_sugerido']}*) no aparece registrado en tu Garmin. ¿Fue día de descanso imprevisto o cambiaste de día?"
-                    })
-            else:
+            elif f_plan > hoy_str:
                 item["estado"] = "📅 Futuro"
+            # Si f_plan < hoy_str se evaluará en el Paso 2 si hubo desplazamiento
 
-        comparativa.append(item)
+        items_map[f_plan] = item
+
+    # ==================== PASO 2: BUSCAR DESPLAZAMIENTOS SOLO EN ENTRENOS LIBRES ====================
+    for p in plan_dias:
+        f_plan = p["fecha"]
+        item = items_map[f_plan]
+
+        # Solo buscar desplazados si era entreno planificado en el pasado que no tuvo sesión exacta
+        if not p["es_descanso"] and item["garmin_entreno"] is None and f_plan < hoy_str:
+            f_dt = datetime.strptime(f_plan, "%Y-%m-%d")
+            desplazado_encontrado = None
+
+            for offset in [1, -1, 2, -2]:
+                f_cand = (f_dt + timedelta(days=offset)).strftime("%Y-%m-%d")
+                if f_cand in mapa_reales:
+                    for cand in mapa_reales[f_cand]:
+                        # CRÍTICO: Nunca robar un entreno que ya corresponde a su propio día exacto
+                        if cand["id"] not in ids_reales_asignados:
+                            desplazado_encontrado = (cand, offset, f_cand)
+                            break
+                if desplazado_encontrado:
+                    break
+
+            if desplazado_encontrado:
+                e_mov, offset, f_mov = desplazado_encontrado
+                item["garmin_entreno"] = e_mov
+                item["diferencia_dias"] = offset
+                item["estado"] = f"🔄 Movido ({'+' if offset > 0 else ''}{offset} días)"
+                ids_reales_asignados.add(e_mov["id"])
+
+                preguntas_discrepancias.append({
+                    "tipo": "entreno_movido",
+                    "plan_fecha": f_plan,
+                    "real_fecha": f_mov,
+                    "entreno_id": e_mov["id"],
+                    "plan_desc": p["titulo_sugerido"],
+                    "mensaje": f"¿El entrenamiento del {p['dia_semana']} {f_plan} (*{p['titulo_sugerido']}*) lo realizaste el día {f_mov}? En tu Garmin aparece ese día una sesión de {e_mov['distancia_km']} km (*{e_mov['titulo']}*)."
+                })
+            else:
+                item["estado"] = "❌ No registrado en Garmin"
+                preguntas_discrepancias.append({
+                    "tipo": "no_realizado",
+                    "plan_fecha": f_plan,
+                    "plan_desc": p["titulo_sugerido"],
+                    "mensaje": f"El entrenamiento del {p['dia_semana']} {f_plan} (*{p['titulo_sugerido']}*) no aparece registrado en tu Garmin. ¿Fue día de descanso imprevisto o cambiaste de día?"
+                })
+
+    comparativa = [items_map[p["fecha"]] for p in plan_dias]
 
     return {
         "comparativa": comparativa,
@@ -375,28 +383,48 @@ def aplicar_etiquetas_entrenador(comparativa: List[Dict[str, Any]]) -> int:
     """
     Renombra los entrenamientos genéricos de Garmin con el título del míster
     y guarda la prescripción en notas_entrenador.
+    Prioriza estrictamente los emparejamientos de fecha exacta sobre los desplazados.
     """
     conn = database.get_connection()
     cursor = conn.cursor()
     actualizados = 0
+    ids_procesados = set()
 
-    for item in comparativa:
+    # Priorizar emparejamientos exactos ("✅ Cumplido (Mismo día)") sobre desplazados
+    items_ordenados = sorted(
+        comparativa,
+        key=lambda x: 0 if "Mismo día" in x.get("estado", "") else 1
+    )
+
+    for item in items_ordenados:
         e = item.get("garmin_entreno")
-        if e and item.get("titulo_sugerido"):
-            if item.get("es_descanso"):
-                # No sobreescribir el título de un entreno real con "Descanso"
-                continue
-            nuevo_titulo = item["titulo_sugerido"]
-            notas = item.get("plan_descripcion", "")
+        if not e or not item.get("titulo_sugerido"):
+            continue
 
-            # Evitar sobreescribir si ya tiene ese título
-            if e["titulo"] != nuevo_titulo or e.get("notas_entrenador") != notas:
+        if item.get("es_descanso"):
+            # No sobreescribir el título de un entreno real con "Descanso"
+            continue
+
+        e_id = e["id"]
+        if e_id in ids_procesados:
+            continue
+
+        nuevo_titulo = item["titulo_sugerido"]
+        notas = item.get("plan_descripcion", "")
+
+        cursor.execute("SELECT titulo, notas_entrenador FROM entrenamientos WHERE id = ?", (e_id,))
+        row_actual = cursor.fetchone()
+        if row_actual:
+            tit_db, notas_db = row_actual[0], row_actual[1]
+            if tit_db != nuevo_titulo or notas_db != notas:
                 cursor.execute("""
                     UPDATE entrenamientos
                     SET titulo = ?, notas_entrenador = ?
                     WHERE id = ?
-                """, (nuevo_titulo, notas, e["id"]))
+                """, (nuevo_titulo, notas, e_id))
                 actualizados += 1
+
+        ids_procesados.add(e_id)
 
     conn.commit()
     conn.close()
