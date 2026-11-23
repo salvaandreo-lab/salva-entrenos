@@ -4,6 +4,7 @@ import hashlib
 import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple, Optional, Callable
+import json
 import database
 
 def segundos_a_formato(segundos: float) -> str:
@@ -158,7 +159,6 @@ def conectar_garmin(email: str, password: str = "", tokenstore_dir: Optional[str
     token_json_file = os.path.join(tokenstore_dir, "garmin_tokens.json")
     if not os.path.isfile(token_json_file):
         try:
-            import json, database
             db_tok = database.obtener_sesion_plataforma(target_uid, "garmin")
             if db_tok:
                 os.makedirs(tokenstore_dir, exist_ok=True)
