@@ -635,12 +635,12 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
     plataformas_activas = 0
 
     # 1. Garmin Connect (solo si este atleta específico tiene tokens o sesión guardada)
-    token_dir_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    token_file_g = os.path.join(token_dir_g, "garmin_tokens.json" if target_u == 1 else f"garmin_tokens_u{target_u}.json")
+    u_g_dir = garmin_sync.obtener_directorio_tokens(usuario_id=target_u)
+    token_file_g = os.path.join(u_g_dir, "garmin_tokens.json")
     if not os.path.isfile(token_file_g):
         db_g_tok = database.obtener_sesion_plataforma(target_u, "garmin")
         if db_g_tok:
-            os.makedirs(token_dir_g, exist_ok=True)
+            os.makedirs(u_g_dir, exist_ok=True)
             with open(token_file_g, "w", encoding="utf-8") as f:
                 json.dump(db_g_tok, f, indent=2)
         elif target_u == 1:
@@ -650,12 +650,11 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
             except Exception:
                 pass
             if tokens_cloud:
-                os.makedirs(token_dir_g, exist_ok=True)
+                os.makedirs(u_g_dir, exist_ok=True)
                 with open(token_file_g, "w", encoding="utf-8") as f:
                     f.write(tokens_cloud)
 
-    u_g_dir = garmin_sync.obtener_directorio_tokens(usuario_id=target_u)
-    has_garmin_target = (target_u == 1 and os.path.isfile(token_file_g)) or os.path.isfile(os.path.join(token_dir_g, f"garmin_tokens_u{target_u}.json")) or os.path.isdir(os.path.join(token_dir_g, f"u{target_u}")) or bool(database.obtener_sesion_plataforma(target_u, "garmin"))
+    has_garmin_target = os.path.isfile(token_file_g) or bool(database.obtener_sesion_plataforma(target_u, "garmin"))
 
     if has_garmin_target:
         plataformas_activas += 1
@@ -831,20 +830,26 @@ def comprobar_estado_sync(uid: int) -> bool:
     if uid == 2:
         return True
 
-    # 3. Comprobar tokens locales de Garmin si existen
+    # 3. Comprobar tokens locales o en DB de Garmin, COROS o Strava propios de ESTE atleta
     tok_g = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
-    if os.path.isfile(os.path.join(tok_g, f"garmin_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_g, "garmin_tokens.json")):
+    if os.path.isfile(os.path.join(tok_g, f"u{uid}", "garmin_tokens.json")) or os.path.isfile(os.path.join(tok_g, f"garmin_tokens_u{uid}.json")):
         return True
 
-    # 4. Comprobar tokens de COROS
     tok_c = os.path.join(os.path.dirname(__file__), ".coros_tokens")
-    if os.path.isfile(os.path.join(tok_c, f"coros_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_c, "coros_tokens.json")):
+    if os.path.isfile(os.path.join(tok_c, f"coros_tokens_u{uid}.json")):
         return True
 
-    # 5. Comprobar tokens de Strava
     tok_s = os.path.join(os.path.dirname(__file__), ".strava_tokens")
-    if os.path.isfile(os.path.join(tok_s, f"strava_tokens_u{uid}.json")) or os.path.isfile(os.path.join(tok_s, "strava_tokens.json")):
+    if os.path.isfile(os.path.join(tok_s, f"strava_tokens_u{uid}.json")):
         return True
+
+    # Comprobar sesiones persistidas en SQLite para cualquiera de las 3 plataformas
+    for plat_chk in ("garmin", "coros", "strava"):
+        try:
+            if database.obtener_sesion_plataforma(uid, plat_chk):
+                return True
+        except Exception:
+            pass
 
     # 6. Si el atleta ya cuenta con entrenamientos sincronizados en la base de datos
     try:
@@ -3219,14 +3224,15 @@ with tab_series:
 def render_sincronizar_garmin():
     st.subheader("📥 Sincronización y Carga de Entrenamientos")
 
-    # Detección de sesión guardada aislada estrictamente por atleta
+    # Detección de sesión guardada aislada estrictamente por atleta (disco o SQLite persistente)
     token_dir_root = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
     token_dir_user = garmin_sync.obtener_directorio_tokens(usuario_id=usuario_id)
+    db_garmin_ses = database.obtener_sesion_plataforma(usuario_id, "garmin")
     if usuario_id == 1:
-        tiene_sesion = os.path.isfile(os.path.join(token_dir_root, "garmin_tokens.json")) or os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json"))
+        tiene_sesion = os.path.isfile(os.path.join(token_dir_root, "garmin_tokens.json")) or os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json")) or bool(db_garmin_ses)
         target_tokenstore = token_dir_user if os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json")) else token_dir_root
     else:
-        tiene_sesion = os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json"))
+        tiene_sesion = os.path.isfile(os.path.join(token_dir_user, "garmin_tokens.json")) or bool(db_garmin_ses)
         target_tokenstore = token_dir_user
 
     if tiene_sesion:
@@ -3252,6 +3258,8 @@ def render_sincronizar_garmin():
                 )
                 progress_bar.progress(1.0)
                 status_text.empty()
+                if nuevas > 0:
+                    database.persistir_base_datos(f"Sincronización Garmin ({usuario_activo.get('nombre', usuario_id)}): {nuevas} nuevo(s) [skip ci]")
                 st.success(f"🎉 Sincronización finalizada: **{nuevas}** nuevos entrenos añadidos ({omitidas} ya existían).")
                 st.rerun()
             except Exception as e:
@@ -3294,6 +3302,7 @@ def render_sincronizar_garmin():
 
                     max_acts = limite_map.get(opcion_limite, 50)
                     nuevas, omitidas = garmin_sync.descargar_historial_garmin(cliente, max_actividades=max_acts, usuario_id=usuario_id)
+                    database.persistir_base_datos(f"Nueva cuenta Garmin ({usuario_activo.get('nombre', usuario_id)}): {nuevas} entreno(s) [skip ci]")
                     st.success(f"🎉 Sincronizados **{nuevas}** nuevos entrenamientos de {garmin_user}.")
                     st.rerun()
                 except Exception as e:
@@ -3310,6 +3319,7 @@ def render_sincronizar_garmin():
                 datos_entreno, laps = garmin_sync.parsear_archivo_fit(tmp_path)
                 id_guardado = database.guardar_entrenamiento(datos_entreno, laps, usuario_id=usuario_id)
                 if id_guardado:
+                    database.persistir_base_datos(f"Archivo FIT manual ({datos_entreno['titulo']}) [skip ci]")
                     st.success(f"✅ ¡Entrenamiento '{datos_entreno['titulo']}' importado con éxito!")
                 else:
                     st.warning("Este entrenamiento ya existía en la base de datos.")
@@ -3436,6 +3446,8 @@ def render_sincronizar_coros():
                 finally:
                     if os.path.exists(tmp_p):
                         os.remove(tmp_p)
+            if guardados > 0:
+                database.persistir_base_datos(f"Archivos COROS manuales: {guardados} [skip ci]")
             st.success(f"🎉 Se han importado {guardados} sesiones de COROS con éxito.")
             st.rerun()
 
