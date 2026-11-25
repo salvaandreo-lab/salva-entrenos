@@ -61,6 +61,40 @@ def sync_file(file_name, commit_msg=None):
         print(f"❌ Error al subir {clean_path}: {e.code} - {e.read().decode('utf-8')}")
         return False
 
+def pull_file(file_name, branch="main"):
+    """Descarga la versión más reciente de un archivo desde GitHub sin caché CDN (vía Git Trees + Blobs API)."""
+    clean_path = file_name.replace("\\", "/")
+    tree_url = f"https://api.github.com/repos/{REPO}/git/trees/{urllib.parse.quote(branch)}"
+    try:
+        req_tree = urllib.request.Request(tree_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req_tree, timeout=15) as resp:
+            tree_data = json.loads(resp.read().decode("utf-8"))
+        blob_sha = None
+        for item in tree_data.get("tree", []):
+            if item.get("path") == clean_path:
+                blob_sha = item.get("sha")
+                break
+        if not blob_sha:
+            print(f"Aviso pull_file: {clean_path} no encontrado en el árbol remoto.")
+            return False
+
+        blob_url = f"https://api.github.com/repos/{REPO}/git/blobs/{blob_sha}"
+        req_blob = urllib.request.Request(blob_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req_blob, timeout=30) as resp:
+            blob_data = json.loads(resp.read().decode("utf-8"))
+
+        raw_bytes = base64.b64decode(blob_data["content"])
+        local_path = os.path.join(BASE_DIR, file_name)
+        tmp_path = local_path + ".tmp"
+        with open(tmp_path, "wb") as f:
+            f.write(raw_bytes)
+        os.replace(tmp_path, local_path)
+        print(f"📥 Descargada última versión remota de {clean_path} (blob: {blob_sha[:7]})")
+        return True
+    except Exception as e:
+        print(f"⚠️ No se pudo descargar {clean_path} de GitHub: {e}")
+        return False
+
 def sync_all():
     print(f"--- Subiendo SportTracks AI a {REPO} ---")
     archivos = [
