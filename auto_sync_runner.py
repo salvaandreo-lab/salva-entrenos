@@ -47,6 +47,21 @@ def ejecutar_auto_sync():
         except Exception as e:
             print(f"❌ Error en Garmin (Salva u1): {e}")
 
+    # Restaurar tokens de Garmin para otros atletas si existen en DB
+    try:
+        usuarios = database.obtener_usuarios()
+        for u in usuarios:
+            uid = u["id"]
+            if uid != 1:
+                db_tok_g = database.obtener_sesion_plataforma(uid, "garmin")
+                if db_tok_g:
+                    u_g_dir = os.path.join(token_dir_g, f"u{uid}")
+                    os.makedirs(u_g_dir, exist_ok=True)
+                    with open(os.path.join(u_g_dir, "garmin_tokens.json"), "w", encoding="utf-8") as f:
+                        json.dump(db_tok_g, f, indent=2)
+    except Exception as e_tg:
+        print(f"Aviso restaurando sesiones Garmin desde DB: {e_tg}")
+
     # Sincronizar Garmin para otros atletas si tienen subdirectorio u{id}
     if os.path.isdir(token_dir_g):
         for entry in os.listdir(token_dir_g):
@@ -66,14 +81,28 @@ def ejecutar_auto_sync():
 
     # ==================== 2. COROS TRAINING HUB ====================
     tok_dir_c = os.path.join(BASE_DIR, ".coros_tokens")
+    os.makedirs(tok_dir_c, exist_ok=True)
     coros_env = os.environ.get("COROS_TOKENS_JSON")
 
     if coros_env:
-        os.makedirs(tok_dir_c, exist_ok=True)
         # Los tokens de COROS de Jose Ángel se guardan estrictamente bajo coros_tokens_u8.json
         with open(os.path.join(tok_dir_c, "coros_tokens_u8.json"), "w", encoding="utf-8") as f:
             f.write(coros_env)
         print("✅ Tokens de COROS para Jose Ángel (id 8) cargados desde GitHub Secrets.")
+
+    # Restaurar sesiones COROS desde SQLite para todos los atletas registrados
+    try:
+        usuarios = database.obtener_usuarios()
+        for u in usuarios:
+            uid = u["id"]
+            db_tok_c = database.obtener_sesion_plataforma(uid, "coros")
+            if db_tok_c and db_tok_c.get("accessToken"):
+                f_u_coros = os.path.join(tok_dir_c, f"coros_tokens_u{uid}.json")
+                with open(f_u_coros, "w", encoding="utf-8") as f:
+                    json.dump(db_tok_c, f, indent=2)
+                print(f"✅ Tokens de COROS para {u.get('nombre', f'atleta {uid}')} restaurados desde DB.")
+    except Exception as e_tok_c:
+        print(f"Aviso restaurando sesiones COROS desde DB: {e_tok_c}")
 
     if os.path.isdir(tok_dir_c):
         for f in os.listdir(tok_dir_c):
@@ -89,6 +118,19 @@ def ejecutar_auto_sync():
 
     # ==================== 3. STRAVA ====================
     tok_dir_s = os.path.join(BASE_DIR, ".strava_tokens")
+    os.makedirs(tok_dir_s, exist_ok=True)
+    # Restaurar sesiones Strava desde SQLite
+    try:
+        usuarios = database.obtener_usuarios()
+        for u in usuarios:
+            uid = u["id"]
+            db_tok_s = database.obtener_sesion_plataforma(uid, "strava")
+            if db_tok_s and db_tok_s.get("access_token"):
+                f_u_strava = os.path.join(tok_dir_s, f"strava_tokens_u{uid}.json")
+                with open(f_u_strava, "w", encoding="utf-8") as f:
+                    json.dump(db_tok_s, f, indent=2)
+    except Exception as e_tok_s:
+        print(f"Aviso restaurando sesiones Strava desde DB: {e_tok_s}")
     if os.path.isdir(tok_dir_s):
         for f in os.listdir(tok_dir_s):
             m_strava = re.match(r"^strava_tokens_u(\d+)\.json$", f)
