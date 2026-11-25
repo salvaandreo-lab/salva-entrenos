@@ -51,3 +51,21 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 * **Despliegue y persistencia:**
   * Toda modificación que deba verse en Streamlit Cloud debe sincronizarse a GitHub usando `sync_sporttracks.sync_file()`.
   * Si se modifican datos en la base de datos local, sincronizar `sporttracks.db`.
+
+---
+
+## 6. Persistencia de Sesiones y Tokens (Garmin / COROS / Strava)
+* **Almacenamiento en SQLite (`sesiones_plataformas`):** Todo inicio de sesión o refresco de tokens en `garmin_sync.py`, `coros_sync.py` y `strava_sync.py` debe persistirse en `sesiones_plataformas`. Prohibido `import json` local dentro de `conectar_garmin()`.
+* **Errores de sincronización:** Cualquier fallo en `sincronizar_actividades_todas()` debe contener `"error"` para mostrarse como alerta y nunca como `Todo al día`.
+
+---
+
+## 7. Conciliación del Planning en Dos Pasadas y Tests en Series
+* **Dos pasadas obligatorias:** `plan_entrenador.conciliar_plan_con_garmin()` empareja primero fechas exactas y después desplazamientos solo sobre entrenos huérfanos; `aplicar_etiquetas_entrenador()` nunca renombra un entreno real a `"Descanso"`.
+* **Tests y sesiones de 3 tramos:** `TEST 2 KMS` / `Control` entran en *Análisis de Series* (`2k` → `2000 mtrs`) y `clasificar_vueltas_sesion()` separa calentamiento/enfriamiento si son $\ge 25\,\text{s/km}$ más lentos que la serie central.
+
+---
+
+## 8. Auto-Sync Multi-Atleta (21:05) y Guardián Obligatorio
+* `auto_sync_runner.py` descarga primero `sporttracks.db` con `pull_file`, recorre dinámicamente `database.obtener_usuarios()` para todas las plataformas y concilia planes con una sola subida atómica (`AUTO_SYNC_BATCH=1`).
+* **Obligatorio antes de desplegar:** Ejecutar `python tests_sporttracks.py` y verificar que pasen **todas** las pruebas.
