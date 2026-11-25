@@ -51,3 +51,36 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 * **Despliegue y persistencia:**
   * Toda modificación que deba verse en Streamlit Cloud debe sincronizarse a GitHub usando `sync_sporttracks.sync_file()`.
   * Si se modifican datos en la base de datos local, sincronizar `sporttracks.db`.
+
+---
+
+## 6. Persistencia de Sesiones y Tokens (Garmin / COROS / Strava)
+* **Almacenamiento en SQLite (`sesiones_plataformas`):** La nube de Streamlit es efímera; todo inicio de sesión o refresco de tokens en `garmin_sync.py`, `coros_sync.py` y `strava_sync.py` **debe** guardarse en `sesiones_plataformas` mediante `database.guardar_sesion_plataforma()`.
+* **`import json` a nivel de módulo:** Prohibido hacer `import json` local dentro de un `if` en `garmin_sync.conectar_garmin()`, ya que provoca `UnboundLocalError` al persistir tokens actualizados.
+* **Errores de sincronización visibles:** En `sincronizar_actividades_todas()` (`app.py`), cualquier excepción debe incluir la palabra `"error"` en el detalle para no caer en el mensaje engañoso `Todo al día`.
+
+---
+
+## 7. Conciliación del Planning en Dos Pasadas y Días de Descanso
+* **Prioridad de fecha exacta:** `plan_entrenador.conciliar_plan_con_garmin()` debe ejecutarse en **dos pasadas** (Paso 1: fechas exactas; Paso 2: desplazamientos $\pm 1/\pm 2$ días únicamente usando entrenamientos huérfanos). Un día pasado sin entreno (ej. sábado) **nunca** puede robar el entreno de otro día con su propia pauta (ej. lunes).
+* **Respeto de descansos:** `aplicar_etiquetas_entrenador()` nunca debe renombrar un entrenamiento real realizado en día de descanso al título `"Descanso"`, ni comparar contra diccionarios en memoria desactualizados en lugar del estado real en SQLite.
+
+---
+
+## 8. Tests, Controles y Clasificación de Sesiones de 3 Tramos
+* **Tests como sesiones analizables:** Palabras clave como `Test` y `Control` (ej. `TEST 2 KMS` → `Test 2k`) deben reconocerse con `es_series = True` en `plan_entrenador.py` y ser aceptadas por `es_sesion_series_real()` en `app.py`, además de preseleccionar su distancia (`2k` → `2000 mtrs`).
+* **Calentamiento/Enfriamiento en 3 tramos:** `database.clasificar_vueltas_sesion()` debe separar Calentamiento (lap 1 ≥ 1200 m) y Enfriamiento (último lap ≥ 1000 m) también cuando `total == 3` siempre que su ritmo sea notablemente más suave ($\ge 25\,\text{s/km}$) que el tramo rápido central (sin degradar series puras tipo `3x2000m`).
+
+---
+
+## 9. Auto-Sync Diario (21:05) Multi-Atleta y Orden Nube ↔ Local
+* **Descarga previa obligatoria (`pull_file`):** En ejecución local (Tarea Programada de Windows `SportTracks_AutoSync_2105`), `auto_sync_runner.py` debe descargar primero `sporttracks.db` desde GitHub antes de ejecutar ninguna sincronización, evitando sobrescribir nuevos atletas o sesiones creadas desde Streamlit Cloud.
+* **Bucle dinámico:** `auto_sync_runner.py` recorre dinámicamente todos los atletas activos en `database.obtener_usuarios()`, sincroniza todas sus plataformas activas y aplica la conciliación del plan del míster usando un único volcado atómico (`AUTO_SYNC_BATCH=1`).
+
+---
+
+## 10. Verificación Obligatoria Antes de Terminar (Guardián)
+Siempre que edites cualquier archivo `.py` o el workflow en `SportTracks_AI`:
+1. Ejecuta `python tests_sporttracks.py` y asegúrate de que pasen **todas** las pruebas.
+2. Si has corregido un error nuevo, añade su prueba en modo solo lectura en `tests_sporttracks.py` y documéntalo en este archivo.
+3. No sincronices a GitHub (`sync_sporttracks.py`) si `tests_sporttracks.py` falla.
