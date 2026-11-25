@@ -581,7 +581,12 @@ token_dir_garmin = os.path.join(os.path.dirname(__file__), ".garmin_tokens")
 
 tiene_garmin = False
 try:
-    tiene_garmin = (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json"))) or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json")) or os.path.isdir(os.path.join(token_dir_garmin, f"u{curr_uid_chk}"))
+    tiene_garmin = (
+        (curr_uid_chk == 1 and os.path.isfile(os.path.join(token_dir_garmin, "garmin_tokens.json")))
+        or os.path.isfile(os.path.join(token_dir_garmin, f"garmin_tokens_u{curr_uid_chk}.json"))
+        or os.path.isfile(os.path.join(token_dir_garmin, f"u{curr_uid_chk}", "garmin_tokens.json"))
+        or (database.obtener_sesion_plataforma(curr_uid_chk, "garmin") is not None)
+    )
 except Exception:
     pass
 
@@ -2755,9 +2760,10 @@ def render_historial_sesiones():
         if not splits_km and entreno_sel.get("fit_hash", "").startswith("garmin_"):
             try:
                 base_act_id = entreno_sel.get("fit_hash").split("_")[-1]
-                from garmin_sync import conectar_garmin, calcular_splits_desde_detalles_garmin
-                tok_file = os.path.join(os.path.dirname(__file__), ".garmin_tokens", "garmin_tokens.json")
-                client_g, _ = conectar_garmin("", "", tok_file)
+                from garmin_sync import conectar_garmin, calcular_splits_desde_detalles_garmin, obtener_directorio_tokens
+                uid_split = entreno_sel.get("usuario_id") or usuario_id
+                tok_dir = obtener_directorio_tokens(usuario_id=uid_split)
+                client_g, _ = conectar_garmin("", "", tokenstore_dir=tok_dir, usuario_id=uid_split)
                 if client_g:
                     splits_km = calcular_splits_desde_detalles_garmin(
                         client_g, base_act_id,
