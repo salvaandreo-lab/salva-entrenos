@@ -56,6 +56,7 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 
 ## 6. Persistencia de Sesiones y Tokens (Garmin / COROS / Strava)
 * **Almacenamiento en SQLite (`sesiones_plataformas`):** La nube de Streamlit es efímera; todo inicio de sesión o refresco de tokens en `garmin_sync.py`, `coros_sync.py` y `strava_sync.py` **debe** guardarse en `sesiones_plataformas` mediante `database.guardar_sesion_plataforma()`.
+* **Aislamiento en cálculo al vuelo y detección de Garmin:** En `app.py`, el cálculo al vuelo de splits km a km debe resolver el **directorio** de tokens del atleta (`obtener_directorio_tokens(usuario_id=uid_split)`) y pasarlo como `tokenstore_dir` junto a `usuario_id=uid_split` (nunca pasar la ruta de un `.json` ni usar el token raíz de Salva). Además, ni `app.py` ni `database.py` deben detectar Garmin mediante `os.path.isdir(.../u{uid})` (los directorios vacíos provocan falsos positivos); deben exigir `garmin_tokens.json` o sesión en `sesiones_plataformas`.
 * **`import json` a nivel de módulo:** Prohibido hacer `import json` local dentro de un `if` en `garmin_sync.conectar_garmin()`, ya que provoca `UnboundLocalError` al persistir tokens actualizados.
 * **Errores de sincronización visibles:** En `sincronizar_actividades_todas()` (`app.py`), cualquier excepción debe incluir la palabra `"error"` en el detalle para no caer en el mensaje engañoso `Todo al día`.
 
