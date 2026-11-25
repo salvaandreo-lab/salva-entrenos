@@ -976,7 +976,14 @@ def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str =
             if p.get("fecha") == f_dia:
                 desc = (p.get("plan_descripcion") or "").lower()
                 tit_sug = (p.get("titulo_sugerido") or "").lower()
-                tiene_patron = bool(re.search(r'\b\d+\s*x\s*\d+', desc) or "serie" in desc or "series" in tit_sug)
+                tiene_patron = bool(
+                    re.search(r'\b\d+\s*x\s*\d+', desc)
+                    or "serie" in desc
+                    or "series" in tit_sug
+                    or "test" in desc
+                    or "test" in tit_sug
+                    or "control" in desc
+                )
                 if p.get("es_series") or tiene_patron:
                     return True
                 else:
@@ -991,7 +998,7 @@ def es_sesion_series_real(entreno_id: int, fecha: str, titulo: str, notas: str =
         "trail", "cross", "trofeo", "campeonato", "carrera popular", "carrera oficial"
     ]
     palabras_series = [
-        "serie", "series", "interval", "x1000", "x400", "x2000", "x500", "x200", "x300", "x800",
+        "serie", "series", "interval", "test", "control", "x1000", "x400", "x2000", "x500", "x200", "x300", "x800",
         "x1500", "x3000", "x4000", "4000m", "3000m", "2000m", "1000m", "800m", "500m", "400m", "300m", "200m"
     ]
 
@@ -2967,8 +2974,11 @@ with tab_series:
         for p in (comparativa_plan or []):
             if p.get("fecha") == hoy_str:
                 tit_desc = f"{p.get('titulo_sugerido', '')} {p.get('plan_descripcion', '')}".lower()
+                km_aliases = {"4000": "4", "3000": "3", "2000": "2", "1000": "1"}
                 for d_cand in ["4000", "3000", "2000", "1000", "800", "500", "400", "300", "200"]:
-                    if re.search(rf'\b{d_cand}\b', tit_desc) or f"x{d_cand}" in tit_desc or f"x {d_cand}" in tit_desc or f"{d_cand}m" in tit_desc:
+                    km_short = km_aliases.get(d_cand)
+                    coincide_km = bool(km_short and re.search(rf'\b{km_short}\s*k(?:ms?)?\b', tit_desc))
+                    if re.search(rf'\b{d_cand}\b', tit_desc) or f"x{d_cand}" in tit_desc or f"x {d_cand}" in tit_desc or f"{d_cand}m" in tit_desc or coincide_km:
                         cand_key = f"{d_cand} mtrs"
                         if cand_key in dist_keys:
                             idx_def = dist_keys.index(cand_key)
