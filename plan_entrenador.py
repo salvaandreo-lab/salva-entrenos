@@ -212,7 +212,11 @@ def descargar_plan_entrenador(doc_url: Optional[str] = None, anio_defecto: int =
                 fecha_str = fecha_dia.strftime("%Y-%m-%d")
 
                 es_descanso = "descanso" in texto_entreno.lower()
-                es_series = bool(re.search(r'\d+\s*x\s*\d+', texto_entreno, re.IGNORECASE))
+                es_series = bool(
+                    re.search(r'\d+\s*x\s*\d+', texto_entreno, re.IGNORECASE)
+                    or "test" in texto_entreno.lower()
+                    or "control" in texto_entreno.lower()
+                )
                 es_carrera = "maratón" in texto_entreno.lower() or "carrera" in texto_entreno.lower()
 
                 plan_dias.append({
