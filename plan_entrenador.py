@@ -126,6 +126,12 @@ def generar_titulo_amigable(texto_plan: str) -> str:
         km_str = f" {match_km.group(1)}k" if match_km else ""
         return f"Long Run{km_str} @z1/z2"
 
+    # Caso Test / Control
+    if "test" in t.lower() or "control" in t.lower():
+        match_km = re.search(r'\b(\d+)\s*kms?', t, re.IGNORECASE)
+        km_str = f" {match_km.group(1)}k" if match_km else ""
+        return f"Test{km_str}"
+
     # Caso Rodaje estándar
     match_rodaje = re.search(r'\b(\d+)\s*kms?', t, re.IGNORECASE)
     if match_rodaje:
