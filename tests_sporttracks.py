@@ -100,6 +100,22 @@ def test_02_aislamiento_atletas_y_alcance_usuario_activo():
             f"REGRESIÓN NameError en app.py:{idx+1}: uso de usuario_activo antes de definirse."
         )
 
+    # 5. Splits km a km al vuelo en app.py deben aislar tokens Garmin por atleta (y pasar directorio, no .json)
+    assert 'conectar_garmin("", "", tok_file)' not in src_app, (
+        "REGRESIÓN: splits km a km pasan un archivo .json y la sesión raíz de Salva a conectar_garmin()."
+    )
+    assert "obtener_directorio_tokens(usuario_id=uid_split)" in src_app
+    assert "tokenstore_dir=tok_dir, usuario_id=uid_split" in src_app
+
+    # 6. Detección de Garmin conectado no debe dar falsos positivos por directorios u{uid} vacíos
+    src_db = _leer_archivo("database.py")
+    assert 'os.path.isdir(os.path.join(token_dir_garmin, f"u{curr_uid_chk}"))' not in src_app, (
+        "REGRESIÓN: app.py detecta Garmin por carpeta vacía u{uid} sin comprobar garmin_tokens.json."
+    )
+    assert 'os.path.isdir(os.path.join(token_dir_g, f"u{uid}"))' not in src_db, (
+        "REGRESIÓN: database.py detecta Garmin por carpeta vacía u{uid} sin comprobar garmin_tokens.json."
+    )
+
 
 def test_03_widgets_streamlit_y_html_seguro():
     src_app = _leer_archivo("app.py")
