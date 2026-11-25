@@ -117,7 +117,8 @@ def sync_all():
         "AGENTS.md",
         "GEMINI.md",
         ".streamlit/config.toml",
-        "auto_sync_runner.py"
+        "auto_sync_runner.py",
+        "tests_sporttracks.py"
     ]
     exito = True
     for a in archivos:
