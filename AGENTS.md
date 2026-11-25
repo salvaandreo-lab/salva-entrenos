@@ -56,6 +56,7 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 
 ## 6. Persistencia de Sesiones y Tokens (Garmin / COROS / Strava)
 * **Almacenamiento en SQLite (`sesiones_plataformas`):** Todo inicio de sesión o refresco de tokens en `garmin_sync.py`, `coros_sync.py` y `strava_sync.py` debe persistirse en `sesiones_plataformas`. Prohibido `import json` local dentro de `conectar_garmin()`.
+* **Aislamiento en splits y detección de Garmin:** El cálculo al vuelo de splits en `app.py` debe usar `obtener_directorio_tokens(usuario_id=uid_split)` como `tokenstore_dir` (nunca un archivo `.json` ni la sesión raíz). La detección de Garmin en `app.py` y `database.py` debe verificar `garmin_tokens.json` o `sesiones_plataformas`, nunca `os.path.isdir(.../u{uid})`.
 * **Errores de sincronización:** Cualquier fallo en `sincronizar_actividades_todas()` debe contener `"error"` para mostrarse como alerta y nunca como `Todo al día`.
 
 ---
