@@ -691,18 +691,28 @@ def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str
     calentamiento_km = 0.0
     enfriamiento_km = 0.0
 
+    # Ritmo mínimo (más rápido en s/km) de entre las vueltas significativas para detectar calentamientos/enfriamientos en sesiones de 3 tramos (p.ej. Calentamiento + Test 2k + Enfriamiento)
+    ritmos_s_km = [
+        float(l.get("tiempo_s", 0.0)) / (float(l.get("distancia_m", 0.0)) / 1000.0)
+        for l in laps
+        if float(l.get("distancia_m", 0.0)) >= 150 and float(l.get("tiempo_s", 0.0)) > 0
+    ]
+    min_ritmo_s_km = min(ritmos_s_km) if ritmos_s_km else 0.0
+
     for i, lap in enumerate(laps):
         item = dict(lap)
         dist = float(lap.get("distancia_m", 0.0))
         t_s = float(lap.get("tiempo_s", 0.0))
         ritmo = str(lap.get("ritmo_minkm", ""))
+        pace_s_km = (t_s / (dist / 1000.0)) if (dist > 0 and t_s > 0) else 0.0
+        es_lento_vs_rapida = (min_ritmo_s_km > 0 and pace_s_km - min_ritmo_s_km >= 25.0)
 
-        # 1. Calentamiento: primer lap largo (> 1200m) en una sesión de muchas vueltas
-        if i == 0 and dist >= 1200 and total > 3:
+        # 1. Calentamiento: primer lap largo (> 1200m) en una sesión de muchas vueltas o notablemente más lento que el tramo principal
+        if i == 0 and dist >= 1200 and (total > 3 or (total == 3 and es_lento_vs_rapida)):
             item["tipo_clasificado"] = "Calentamiento"
             calentamiento_km = round(dist / 1000.0, 2)
         # 2. Enfriamiento: último lap largo (> 1000m)
-        elif i == total - 1 and dist >= 1000 and total > 3:
+        elif i == total - 1 and dist >= 1000 and (total > 3 or (total == 3 and es_lento_vs_rapida)):
             item["tipo_clasificado"] = "Enfriamiento"
             enfriamiento_km = round(dist / 1000.0, 2)
         # 3. Recuperación: descanso parado (< 120m) o tramo a ritmo lento (> 4:40 min/km o pausas de trote/caminar)
