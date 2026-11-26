@@ -68,8 +68,10 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 
 ---
 
-## 8. Tests, Controles y Clasificación de Sesiones de 3 Tramos
+## 8. Tests, Controles, COROS Laps y Clasificación de Sesiones
 * **Tests como sesiones analizables:** Palabras clave como `Test` y `Control` (ej. `TEST 2 KMS` → `Test 2k`) deben reconocerse con `es_series = True` en `plan_entrenador.py` y ser aceptadas por `es_sesion_series_real()` en `app.py`, además de preseleccionar su distancia (`2k` → `2000 mtrs`).
+* **Separadores de miles en series (`5x1.000m`, `5x1k`):** `plan_entrenador.generar_titulo_amigable()` debe preservar el separador de miles (`.000`) y el sufijo `k`/`km` para no truncar `5x1.000m` a `Series 5x1`.
+* **COROS Training Hub (`gzip`, `lapList` y unidades):** `coros_sync._decodificar_respuesta_json()` debe descomprimir respuestas `gzip` (en especial `/activity/detail/query`). En `parsear_actividad_coros()`, se debe priorizar el grupo `type == 2` (vueltas reales del entrenamiento) sobre `type == -1` (resumen único) y convertir distancias/tiempos de `lapItemList` desde **cm/cs** (`/ 100.0`) validando la escala contra el total de la actividad.
 * **Calentamiento/Enfriamiento en 3 tramos:** `database.clasificar_vueltas_sesion()` debe separar Calentamiento (lap 1 ≥ 1200 m) y Enfriamiento (último lap ≥ 1000 m) también cuando `total == 3` siempre que su ritmo sea notablemente más suave ($\ge 25\,\text{s/km}$) que el tramo rápido central (sin degradar series puras tipo `3x2000m`).
 
 ---
