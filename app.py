@@ -722,6 +722,16 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
 
     if total_nuevas > 0:
         try:
+            import plan_entrenador
+            doc_u = plan_entrenador.obtener_doc_url(target_u)
+            if doc_u:
+                dias_u = plan_entrenador.descargar_plan_entrenador(doc_u)
+                if dias_u:
+                    res_p = plan_entrenador.conciliar_plan_con_garmin(dias_u, usuario_id=target_u)
+                    plan_entrenador.aplicar_etiquetas_entrenador(res_p.get("comparativa", []))
+        except Exception:
+            pass
+        try:
             import sync_sporttracks
             sync_sporttracks.sync_file("sporttracks.db", commit_msg=f"Sincronización manual: {total_nuevas} nuevo(s) [skip ci]")
         except Exception:
@@ -2980,6 +2990,7 @@ with tab_series:
         for p in (comparativa_plan or []):
             if p.get("fecha") == hoy_str:
                 tit_desc = f"{p.get('titulo_sugerido', '')} {p.get('plan_descripcion', '')}".lower()
+                tit_desc = re.sub(r'(\d+)\.(\d{3})', r'\1\2', tit_desc)
                 km_aliases = {"4000": "4", "3000": "3", "2000": "2", "1000": "1"}
                 for d_cand in ["4000", "3000", "2000", "1000", "800", "500", "400", "300", "200"]:
                     km_short = km_aliases.get(d_cand)
