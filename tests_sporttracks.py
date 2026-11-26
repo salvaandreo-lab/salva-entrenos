@@ -300,6 +300,56 @@ def test_07_auto_sync_multiatleta_y_cron():
     assert "5 20 * * *" in yml, "REGRESIÓN: se alteró el cron '5 20 * * *' en auto_sync.yml"
 
 
+def test_08_coros_gzip_laps_y_series_miles():
+    import gzip
+    import json
+    import coros_sync
+    import database
+    import plan_entrenador
+
+    # 1. Títulos con separador de miles (5x1.000m) o sufijo k (5x1k) no deben truncarse a 5x1
+    assert plan_entrenador.generar_titulo_amigable(
+        '2,5 km Z1 + 5x1.000m Pista Rec 90" @3\'48"-3\'52"/km + 1,5 km Z1'
+    ) == "Series 5x1000m"
+    assert plan_entrenador.generar_titulo_amigable("5x1k Rec 90") == "Series 5x1000m (Rec 90)"
+
+    # 2. _decodificar_respuesta_json debe descomprimir respuestas gzip de COROS
+    class _FakeGzipResp:
+        headers = {"Content-Encoding": "gzip"}
+        def read(self):
+            return gzip.compress(json.dumps({"result": "0000", "data": {"ok": True}}).encode("utf-8"))
+
+    assert coros_sync._decodificar_respuesta_json(_FakeGzipResp())["data"]["ok"] is True
+
+    # 3. parsear_actividad_coros debe priorizar type==2 sobre type==-1 y convertir cm/cs a m/s
+    act_mock = {"labelId": "999", "distance": 10029.43, "totalTime": 2957, "name": "Carrera", "sportType": 100}
+    detail_mock = {
+        "lapList": [
+            {"type": 10, "lapItemList": [{"lapIndex": 1, "distance": 100000, "time": 32000}]},
+            {"type": 2, "lapItemList": [
+                {"lapIndex": 1, "distance": 251579, "time": 79465},
+                {"lapIndex": 2, "distance": 100374, "time": 22968},
+                {"lapIndex": 3, "distance": 12637, "time": 8834},
+                {"lapIndex": 4, "distance": 100089, "time": 23037},
+                {"lapIndex": 5, "distance": 12271, "time": 8970},
+                {"lapIndex": 6, "distance": 100423, "time": 22758},
+                {"lapIndex": 7, "distance": 15050, "time": 9084},
+                {"lapIndex": 8, "distance": 100651, "time": 22603},
+                {"lapIndex": 9, "distance": 12210, "time": 8847},
+                {"lapIndex": 10, "distance": 101778, "time": 22219},
+                {"lapIndex": 11, "distance": 151895, "time": 44798},
+            ]},
+            {"type": -1, "lapItemList": [{"lapIndex": 1, "distance": 1002943, "time": 295618}]},
+        ]
+    }
+    _, laps = coros_sync.parsear_actividad_coros(act_mock, detail_mock, usuario_id=8)
+    assert len(laps) == 11, f"REGRESIÓN COROS lapList: esperaba 11 laps (type==2), obtuvo {len(laps)}"
+    assert 990 <= laps[1]["distancia_m"] <= 1020, f"REGRESIÓN unidades cm->m COROS: {laps[1]}"
+    assert 220 <= laps[1]["tiempo_s"] <= 235, f"REGRESIÓN unidades cs->s COROS: {laps[1]}"
+    _, res = database.clasificar_vueltas_sesion(laps)
+    assert res["num_series"] == 5, f"REGRESIÓN clasificación 5x1000m COROS: {res}"
+
+
 def main():
     tests = [
         ("01. Sintaxis de todos los módulos", test_01_sintaxis_modulos),
@@ -309,6 +359,7 @@ def main():
         ("05. Tests/Controles y clasificación de 3 tramos", test_05_tests_controles_y_clasificacion_3_vueltas),
         ("06. Persistencia de tokens Garmin/COROS/Strava", test_06_persistencia_tokens_y_nube),
         ("07. Auto-Sync multi-atleta, pull previo y cron", test_07_auto_sync_multiatleta_y_cron),
+        ("08. COROS gzip, laps type==2 (cm/cs) y 5x1.000m", test_08_coros_gzip_laps_y_series_miles),
     ]
     for titulo, fn in tests:
         fn()
