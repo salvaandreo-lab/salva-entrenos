@@ -92,10 +92,14 @@ def generar_titulo_amigable(texto_plan: str) -> str:
             return (match_carrera.group(1) or match_carrera.group(2)).strip().strip('“”"')
         return "Competición"
 
-    # Caso Series (ej: 8x1000, 15x400, 5x2000, 8x300 + 1000m) usando límites de palabra
-    match_series = re.search(r'\b(\d+\s*x\s*\d+m?)\b\s*(?:Rec\s*([0-9’"”\s]+))?', t, re.IGNORECASE)
+    # Caso Series (ej: 8x1000, 15x400, 5x2000, 8x300 + 1000m, 5x1.000m, 5x1k) usando límites de palabra
+    match_series = re.search(r'\b(\d+\s*x\s*\d+(?:\.\d{3})*(?:km?|m)?)\b\s*(?:Rec\s*([0-9’"”\s]+))?', t, re.IGNORECASE)
     if match_series:
-        serie_name = match_series.group(1).replace(' ', '')
+        serie_name = re.sub(r'\s+', '', match_series.group(1))
+        serie_name = re.sub(r'(\d+)\.(\d{3})', r'\1\2', serie_name)
+        m_km_rep = re.match(r'^(\d+x)(\d+)km?$', serie_name, re.IGNORECASE)
+        if m_km_rep:
+            serie_name = f"{m_km_rep.group(1)}{int(m_km_rep.group(2)) * 1000}m"
         rec = match_series.group(2).strip() if match_series.group(2) else ""
 
         # Comprobar si hay una serie o bloque adicional posterior (ej: 1000m @ 3.30, + 1x1000, + 1000m)
