@@ -1,5 +1,6 @@
 import os
 import json
+import gzip
 import hashlib
 import time
 import urllib.request
@@ -13,6 +14,13 @@ from garmin_sync import segundos_a_formato, calcular_ritmo
 
 COROS_TOKENS_DIR = os.path.join(os.path.dirname(__file__), ".coros_tokens")
 COROS_TOKENS_FILE = os.path.join(COROS_TOKENS_DIR, "coros_tokens.json")
+
+def _decodificar_respuesta_json(resp) -> Dict[str, Any]:
+    """Lee una respuesta HTTP de COROS descomprimiendo gzip si el servidor lo envía."""
+    raw = resp.read()
+    if raw[:2] == b"\x1f\x8b" or "gzip" in (resp.headers.get("Content-Encoding") or "").lower():
+        raw = gzip.decompress(raw)
+    return json.loads(raw.decode("utf-8"))
 
 REGIONS = {
     "eu": {
@@ -136,7 +144,7 @@ def iniciar_sesion_coros(account: str, password: str, region_key: str = "eu", us
     try:
         req = urllib.request.Request(login_url, data=payload, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=12) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
+            res_data = _decodificar_respuesta_json(response)
 
         if str(res_data.get("result")) in ("0000", "0") or ("data" in res_data and "accessToken" in res_data["data"]):
             token_data = res_data["data"]
@@ -201,7 +209,7 @@ def consultar_actividades_coros(
 
     req = urllib.request.Request(full_url, headers=headers)
     with urllib.request.urlopen(req, timeout=15) as resp:
-        res = json.loads(resp.read().decode("utf-8"))
+        res = _decodificar_respuesta_json(resp)
 
     if "data" in res and isinstance(res["data"], dict) and "dataList" in res["data"]:
         return res["data"]["dataList"] or []
@@ -274,7 +282,7 @@ def consultar_detalle_actividad_coros(
         h_post = {**headers_base, "Content-Type": "application/x-www-form-urlencoded"}
         req = urllib.request.Request(detail_url, data=body_encoded, headers=h_post, method="POST")
         with urllib.request.urlopen(req, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = _decodificar_respuesta_json(resp)
             if data and data.get("data"):
                 return data.get("data")
     except Exception:
@@ -286,7 +294,7 @@ def consultar_detalle_actividad_coros(
         get_url = f"{detail_url}?{q_params}"
         req_get = urllib.request.Request(get_url, headers=headers_base, method="GET")
         with urllib.request.urlopen(req_get, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = _decodificar_respuesta_json(resp)
             if data and data.get("data"):
                 return data.get("data")
     except Exception:
@@ -303,7 +311,7 @@ def consultar_detalle_actividad_coros(
         h_json = {**headers_base, "Content-Type": "application/json"}
         req_json = urllib.request.Request(detail_url, data=json_payload, headers=h_json, method="POST")
         with urllib.request.urlopen(req_json, timeout=12) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            data = _decodificar_respuesta_json(resp)
             if data and data.get("data"):
                 return data.get("data")
     except Exception:
@@ -382,19 +390,34 @@ def parsear_actividad_coros(
     lap_items_extraidos = []
 
     if detail:
-        # Estructura oficial COROS Training Hub: lapList contiene grupos. El grupo con type == -1 son las vueltas reales del atleta
+        # Estructura oficial COROS Training Hub:
+        # type == 2: vueltas manuales/estructuradas reales del entrenamiento
+        # type == 10: parciales automáticos de 1 km; type == -1: resumen total único
         raw_lap_list = detail.get("lapList") or []
+        grupo_manual = None
+        grupo_km = None
+        grupo_mayor = None
+        grupo_resumen = None
         for group in raw_lap_list:
             if isinstance(group, dict):
                 items = group.get("lapItemList")
                 if items and isinstance(items, list):
-                    # Priorizar type == -1 (vueltas del atleta) o el grupo con más vueltas
-                    if group.get("type") == -1 or not lap_items_extraidos:
-                        lap_items_extraidos = items
+                    gtype = group.get("type")
+                    if gtype == 2:
+                        grupo_manual = items
+                    elif gtype == 10 and not grupo_km:
+                        grupo_km = items
+                    elif gtype == -1:
+                        grupo_resumen = items
+                    elif not grupo_mayor or len(items) > len(grupo_mayor):
+                        grupo_mayor = items
                 elif "distance" in group or "totalTime" in group or "duration" in group or "time" in group:
                     lap_items_extraidos.append(group)
             elif isinstance(group, list):
                 lap_items_extraidos.extend(group)
+
+        if not lap_items_extraidos:
+            lap_items_extraidos = grupo_manual or grupo_mayor or grupo_km or grupo_resumen or []
 
         if not lap_items_extraidos:
             lap_items_extraidos = detail.get("laps") or detail.get("splits") or []
@@ -409,20 +432,38 @@ def parsear_actividad_coros(
                     lap_items_extraidos.append(item)
 
     if lap_items_extraidos:
-        for idx, lap in enumerate(lap_items_extraidos):
-            # En COROS Training Hub, distancia viene en milímetros (si > 50000 mm = 50 m)
-            raw_dist = float(lap.get("distance") or 0.0)
-            if raw_dist > 50000:
-                lap_dist = round(raw_dist / 1000.0, 2)
-            else:
-                lap_dist = round(raw_dist, 2)
+        # Detectar escala real de distancia (en COROS lapItemList viene en cm: /100) y tiempo (en cs: /100)
+        sum_raw_dist = sum(float(l.get("distance") or 0.0) for l in lap_items_extraidos)
+        dist_scale = 100.0 if sum_raw_dist > 20000 else 1.0
+        if distancia_m > 0 and sum_raw_dist > 0:
+            ratio_d = sum_raw_dist / distancia_m
+            if 500.0 <= ratio_d <= 2000.0:
+                dist_scale = 1000.0
+            elif 50.0 <= ratio_d <= 200.0:
+                dist_scale = 100.0
+            elif 0.5 <= ratio_d <= 2.0:
+                dist_scale = 1.0
 
-            # Duración puede venir en milisegundos (si > 100000 ms = 100 s)
+        sum_raw_time = sum(
+            float(l.get("time") or l.get("duration") or l.get("totalTime") or 0.0)
+            for l in lap_items_extraidos
+        )
+        time_scale = 100.0 if sum_raw_time > 20000 else 1.0
+        if tiempo_total_s > 0 and sum_raw_time > 0:
+            ratio_t = sum_raw_time / tiempo_total_s
+            if 500.0 <= ratio_t <= 2000.0:
+                time_scale = 1000.0
+            elif 50.0 <= ratio_t <= 200.0:
+                time_scale = 100.0
+            elif 0.5 <= ratio_t <= 2.0:
+                time_scale = 1.0
+
+        for idx, lap in enumerate(lap_items_extraidos):
+            raw_dist = float(lap.get("distance") or 0.0)
+            lap_dist = round(raw_dist / dist_scale, 2)
+
             raw_time = float(lap.get("time") or lap.get("duration") or lap.get("totalTime") or 0.0)
-            if raw_time > 100000:
-                lap_time = round(raw_time / 1000.0, 1)
-            else:
-                lap_time = round(raw_time, 1)
+            lap_time = round(raw_time / time_scale, 1)
 
             if lap_dist <= 0 and lap_time <= 0:
                 continue
@@ -731,6 +772,12 @@ def reprocesar_laps_actividades_existentes(usuario_id: int = 8, limite: int = 30
                         ))
                     actualizados += 1
                     conn.commit()
+                    try:
+                        splits_km = database.calcular_splits_km(dist_km, dur_s, laps)
+                        if splits_km:
+                            database.guardar_splits_km(entreno_id, splits_km)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
