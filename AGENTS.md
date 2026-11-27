@@ -63,10 +63,10 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 
 ## 7. Conciliación del Planning en Dos Pasadas y Tests en Series
 * **Dos pasadas obligatorias:** `plan_entrenador.conciliar_plan_con_garmin()` empareja primero fechas exactas y después desplazamientos solo sobre entrenos huérfanos; `aplicar_etiquetas_entrenador()` nunca renombra un entreno real a `"Descanso"`.
-* **Tests, COROS laps y sesiones de 3 tramos:** `TEST 2 KMS` / `Control` entran en *Análisis de Series* (`2k` → `2000 mtrs`) y `clasificar_vueltas_sesion()` separa calentamiento/enfriamiento si son $\ge 25\,\text{s/km}$ más lentos que la serie central. `generar_titulo_amigable()` preserva `5x1.000m` → `Series 5x1000m`. En `coros_sync.py`, descomprimir respuestas `gzip`, priorizar `lapList` `type == 2` sobre `type == -1` y convertir cm/cs (`/ 100.0`).
+* **Tests, COROS laps, 1600m y sesiones de 3 tramos:** `TEST 2 KMS` / `Control` entran en *Análisis de Series* (`2k` → `2000 mtrs`), el desplegable incluye `1600 mtrs` (`1500–1700 m`) y `clasificar_vueltas_sesion()` separa calentamiento/enfriamiento si son $\ge 25\,\text{s/km}$ más lentos que la serie central. `generar_titulo_amigable()` preserva `5x1.000m` → `Series 5x1000m`. En `coros_sync.py`, descomprimir respuestas `gzip`, priorizar `lapList` `type == 2` sobre `type == -1` y convertir cm/cs (`/ 100.0`).
 
 ---
 
-## 8. Auto-Sync Multi-Atleta (21:05) y Guardián Obligatorio
-* `auto_sync_runner.py` descarga primero `sporttracks.db` con `pull_file`, recorre dinámicamente `database.obtener_usuarios()` para todas las plataformas y concilia planes con una sola subida atómica (`AUTO_SYNC_BATCH=1`).
+## 8. Auto-Sync Multi-Atleta (21:05 + Apertura App) y Guardián Obligatorio
+* `auto_sync_runner.py` descarga primero `sporttracks.db` con `pull_file`, recorre dinámicamente `database.obtener_usuarios()` para todas las plataformas y concilia planes con una sola subida atómica (`AUTO_SYNC_BATCH=1`). En modo incremental, COROS limita el reprocesamiento a `limite=5` recientes; `app.py` ejecuta `_ejecutar_auto_sync_apertura()` con cooldown de 2h para todos los atletas.
 * **Obligatorio antes de desplegar:** Ejecutar `python tests_sporttracks.py` y verificar que pasen **todas** las pruebas.
