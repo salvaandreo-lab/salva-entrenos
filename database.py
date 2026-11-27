@@ -706,19 +706,26 @@ def clasificar_vueltas_sesion(laps: List[Dict[str, Any]]) -> Tuple[List[Dict[str
         ritmo = str(lap.get("ritmo_minkm", ""))
         pace_s_km = (t_s / (dist / 1000.0)) if (dist > 0 and t_s > 0) else 0.0
         es_lento_vs_rapida = (min_ritmo_s_km > 0 and pace_s_km - min_ritmo_s_km >= 25.0)
+        es_ritmo_lento = any(ritmo.startswith(p) for p in ["4:4", "4:5", "5:", "6:", "7:", "8:", "9:", "10:", "11:", "12:", "13:", "14:", "15:", "16:", "17:", "18:", "19:", "20:", "25:", "30:", "--"])
 
-        # 1. Calentamiento: primer lap largo (> 1200m) en una sesión de muchas vueltas o notablemente más lento que el tramo principal
-        if i == 0 and dist >= 1200 and (total > 3 or (total == 3 and es_lento_vs_rapida)):
+        # 1. Calentamiento: primer lap largo (> 1200m) o bloques iniciales suaves (>= 800m y >= 25 s/km más lentos que la serie rápida)
+        if (i == 0 and dist >= 1200 and (total > 3 or (total == 3 and es_lento_vs_rapida))) or (
+            total > 3 and i < total - 1 and num_serie == 1 and num_recup == 0 and dist >= 800 and es_ritmo_lento and es_lento_vs_rapida
+        ):
             item["tipo_clasificado"] = "Calentamiento"
-            calentamiento_km = round(dist / 1000.0, 2)
+            calentamiento_km = round(calentamiento_km + dist / 1000.0, 2)
         # 2. Enfriamiento: último lap largo (> 1000m)
         elif i == total - 1 and dist >= 1000 and (total > 3 or (total == 3 and es_lento_vs_rapida)):
             item["tipo_clasificado"] = "Enfriamiento"
             enfriamiento_km = round(dist / 1000.0, 2)
-        # 3. Recuperación: descanso parado (< 120m) o tramo a ritmo lento (> 4:40 min/km o pausas de trote/caminar)
+        # 3. Recuperación: descanso parado (< 120m), trote suave (< 380m lento o <= 450m siendo >= 25 s/km más lento que la serie rápida)
         else:
-            es_ritmo_lento = any(ritmo.startswith(p) for p in ["4:4", "4:5", "5:", "6:", "7:", "8:", "9:", "10:", "11:", "12:", "13:", "14:", "15:", "16:", "17:", "18:", "19:", "20:", "25:", "30:", "--"])
-            if dist < 120 or (dist < 380 and es_ritmo_lento) or (t_s <= 300 and any(k in ritmo for k in ["10:", "11:", "12:", "15:", "20:", "25:", "30:", "--"])):
+            if (
+                dist < 120
+                or (dist < 380 and es_ritmo_lento)
+                or (dist <= 450 and es_ritmo_lento and es_lento_vs_rapida)
+                or (t_s <= 300 and any(k in ritmo for k in ["10:", "11:", "12:", "15:", "20:", "25:", "30:", "--"]))
+            ):
                 item["tipo_clasificado"] = "Recuperación"
                 num_recup += 1
             # 4. Serie principal (incluyendo series rápidas de 200m y 300m)
