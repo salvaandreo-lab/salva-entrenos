@@ -255,6 +255,23 @@ def test_05_tests_controles_y_clasificacion_3_vueltas():
     clasif_3, res_3 = database.clasificar_vueltas_sesion(laps_3x2k)
     assert res_3["num_series"] == 3, f"REGRESIÓN en 3x2000m: {res_3}"
 
+    # 6. 5x1600m con calentamiento partido (auto-lap 1km + 3.97km) y recuperaciones de 400m al trote (~5:00/km)
+    laps_5x1600 = [
+        {"lap_numero": 1, "distancia_m": 1002.4, "tiempo_s": 324.9, "ritmo_minkm": "5:24"},
+        {"lap_numero": 2, "distancia_m": 3973.9, "tiempo_s": 1152.8, "ritmo_minkm": "4:50"},
+        {"lap_numero": 3, "distancia_m": 1602.8, "tiempo_s": 399.9, "ritmo_minkm": "4:09"},
+        {"lap_numero": 4, "distancia_m": 408.6, "tiempo_s": 121.6, "ritmo_minkm": "4:57"},
+        {"lap_numero": 5, "distancia_m": 1605.3, "tiempo_s": 401.5, "ritmo_minkm": "4:10"},
+        {"lap_numero": 6, "distancia_m": 408.9, "tiempo_s": 141.5, "ritmo_minkm": "5:46"},
+        {"lap_numero": 7, "distancia_m": 1621.5, "tiempo_s": 393.2, "ritmo_minkm": "4:02"},
+        {"lap_numero": 8, "distancia_m": 2410.8, "tiempo_s": 676.6, "ritmo_minkm": "4:40"},
+    ]
+    clasif_16, res_16 = database.clasificar_vueltas_sesion(laps_5x1600)
+    assert res_16["num_series"] == 3, f"REGRESIÓN 1600m clasificó rec/warmup como serie: {res_16}"
+    assert res_16["num_recuperaciones"] == 2
+    assert clasif_16[0]["tipo_clasificado"] == "Calentamiento" and clasif_16[1]["tipo_clasificado"] == "Calentamiento"
+    assert clasif_16[3]["tipo_clasificado"] == "Recuperación" and clasif_16[5]["tipo_clasificado"] == "Recuperación"
+
 
 def test_06_persistencia_tokens_y_nube():
     src_g = _leer_archivo("garmin_sync.py")
