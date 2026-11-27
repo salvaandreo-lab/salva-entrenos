@@ -177,6 +177,7 @@ if __name__ == "__main__":
             for s in self.streams:
                 try:
                     s.write(data)
+                    s.flush()
                 except Exception:
                     pass
         def flush(self):
@@ -186,7 +187,7 @@ if __name__ == "__main__":
                 except Exception:
                     pass
 
-    with open(log_path, "a", encoding="utf-8") as log_f:
+    with open(log_path, "a", encoding="utf-8", buffering=1) as log_f:
         orig_out, orig_err = sys.stdout, sys.stderr
         sys.stdout = _Tee(orig_out, log_f)
         sys.stderr = _Tee(orig_err, log_f)
