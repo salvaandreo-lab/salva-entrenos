@@ -628,7 +628,14 @@ else:
     plat_pref_tag = ((u_chk.get("plataforma_principal") if u_chk else None) or "Dispositivo").upper()
     pill_device_html = f"<span>⌚ {plat_pref_tag}</span><span style='color: #64748B;'>|</span><span style='color: #F59E0B; font-weight: 700;'>● Sin vincular</span>"
 
-def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None) -> Tuple[int, int, str]:
+@st.cache_resource
+def _obtener_registro_auto_sync() -> Dict[int, float]:
+    """Almacena en memoria del servidor la última comprobación de auto-sync por usuario_id."""
+    return {}
+
+AUTO_SYNC_COOLDOWN_S = 7200  # 2 horas entre comprobaciones automáticas al abrir la app
+
+def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None, persistir_nube: bool = True) -> Tuple[int, int, str]:
     """
     Sincroniza automáticamente los entrenamientos desde cualquiera de las plataformas
     que tengan sesión activa para el atleta indicado.
@@ -731,11 +738,17 @@ def sincronizar_actividades_todas(max_acts: int = 30, u_id: Optional[int] = None
                     plan_entrenador.aplicar_etiquetas_entrenador(res_p.get("comparativa", []))
         except Exception:
             pass
-        try:
-            import sync_sporttracks
-            sync_sporttracks.sync_file("sporttracks.db", commit_msg=f"Sincronización manual: {total_nuevas} nuevo(s) [skip ci]")
-        except Exception:
-            pass
+        if persistir_nube:
+            try:
+                import sync_sporttracks
+                sync_sporttracks.sync_file("sporttracks.db", commit_msg=f"Sincronización manual: {total_nuevas} nuevo(s) [skip ci]")
+            except Exception:
+                pass
+
+    try:
+        _obtener_registro_auto_sync()[target_u] = time.time()
+    except Exception:
+        pass
 
     detalle = " · ".join(mensajes)
     return total_nuevas, total_omitidas, detalle
@@ -949,6 +962,57 @@ if st.session_state.get("mister_inspeccionando") and not es_entrenador:
             st.session_state["usuario_id_activo"] = 2
             st.session_state["mister_inspeccionando"] = False
             st.rerun()
+
+# Auto-sync inteligente al abrir la app (para todos los atletas con Garmin, COROS o Strava)
+def _ejecutar_auto_sync_apertura(uid_activo: int, es_vista_entrenador: bool):
+    registro = _obtener_registro_auto_sync()
+    ahora = time.time()
+
+    if es_vista_entrenador:
+        pendientes = [
+            u["id"] for u in usuarios_db
+            if (u.get("rol") or "").lower() != "entrenador"
+            and (ahora - registro.get(u["id"], 0.0)) >= AUTO_SYNC_COOLDOWN_S
+        ]
+        if not pendientes:
+            return
+        total_nuevas_eq = 0
+        prev_batch = os.environ.get("AUTO_SYNC_BATCH")
+        os.environ["AUTO_SYNC_BATCH"] = "1"
+        try:
+            with st.spinner("🔄 Comprobando nuevos entrenamientos del equipo (Garmin / COROS / Strava)..."):
+                for a_uid in pendientes:
+                    registro[a_uid] = ahora
+                    try:
+                        n_u, _, _ = sincronizar_actividades_todas(max_acts=15, u_id=a_uid, persistir_nube=False)
+                        total_nuevas_eq += n_u
+                    except Exception:
+                        pass
+            if total_nuevas_eq > 0:
+                try:
+                    import sync_sporttracks
+                    sync_sporttracks.sync_file("sporttracks.db", commit_msg=f"Auto-sync apertura equipo: {total_nuevas_eq} nuevo(s) [skip ci]")
+                except Exception:
+                    pass
+                st.toast(f"🔄 {total_nuevas_eq} entreno(s) nuevo(s) sincronizado(s) en el equipo.")
+        finally:
+            if prev_batch is None:
+                os.environ.pop("AUTO_SYNC_BATCH", None)
+            else:
+                os.environ["AUTO_SYNC_BATCH"] = prev_batch
+    else:
+        if (ahora - registro.get(uid_activo, 0.0)) < AUTO_SYNC_COOLDOWN_S:
+            return
+        registro[uid_activo] = ahora
+        try:
+            with st.spinner("🔄 Comprobando nuevos entrenamientos..."):
+                n_u, _, _ = sincronizar_actividades_todas(max_acts=15, u_id=uid_activo, persistir_nube=True)
+            if n_u > 0:
+                st.toast(f"🔄 {n_u} entreno(s) nuevo(s) sincronizado(s) automáticamente.")
+        except Exception:
+            pass
+
+_ejecutar_auto_sync_apertura(usuario_id, es_entrenador)
 
 # Resumen superior filtrado por atleta activo
 stats = database.obtener_resumen_estadisticas(usuario_id=usuario_id)
@@ -1402,6 +1466,8 @@ def render_tab_home_atleta():
             dm = float(l.get("distancia_m", 0))
             if 850 <= dm <= 1150:
                 d_label = "1000m"
+            elif 1500 <= dm <= 1700:
+                d_label = "1600m"
             elif 1850 <= dm <= 2150:
                 d_label = "2000m"
             elif 250 <= dm <= 350:
@@ -2947,6 +3013,7 @@ with tab_series:
             "4000 mtrs": (3800, 4200),
             "3000 mtrs": (2800, 3200),
             "2000 mtrs": (1850, 2150),
+            "1600 mtrs": (1500, 1700),
             "1000 mtrs": (900, 1100),
             "800 mtrs": (750, 850),
             "500 mtrs": (470, 530),
@@ -2963,6 +3030,7 @@ with tab_series:
                 WHEN s.distancia_m BETWEEN 3800 AND 4200 THEN '4000 mtrs'
                 WHEN s.distancia_m BETWEEN 2800 AND 3200 THEN '3000 mtrs'
                 WHEN s.distancia_m BETWEEN 1850 AND 2150 THEN '2000 mtrs'
+                WHEN s.distancia_m BETWEEN 1500 AND 1700 THEN '1600 mtrs'
                 WHEN s.distancia_m BETWEEN 900 AND 1100 THEN '1000 mtrs'
                 WHEN s.distancia_m BETWEEN 750 AND 850 THEN '800 mtrs'
                 WHEN s.distancia_m BETWEEN 470 AND 530 THEN '500 mtrs'
@@ -2992,7 +3060,7 @@ with tab_series:
                 tit_desc = f"{p.get('titulo_sugerido', '')} {p.get('plan_descripcion', '')}".lower()
                 tit_desc = re.sub(r'(\d+)\.(\d{3})', r'\1\2', tit_desc)
                 km_aliases = {"4000": "4", "3000": "3", "2000": "2", "1000": "1"}
-                for d_cand in ["4000", "3000", "2000", "1000", "800", "500", "400", "300", "200"]:
+                for d_cand in ["4000", "3000", "2000", "1600", "1000", "800", "500", "400", "300", "200"]:
                     km_short = km_aliases.get(d_cand)
                     coincide_km = bool(km_short and re.search(rf'\b{km_short}\s*k(?:ms?)?\b', tit_desc))
                     if re.search(rf'\b{d_cand}\b', tit_desc) or f"x{d_cand}" in tit_desc or f"x {d_cand}" in tit_desc or f"{d_cand}m" in tit_desc or coincide_km:
@@ -3028,7 +3096,7 @@ with tab_series:
                 cand_max = max(mejores, key=lambda k: dist_counts[k])
                 idx_def = dist_keys.index(cand_max)
             else:
-                idx_def = 3 # 1000 mtrs por defecto
+                idx_def = dist_keys.index("1000 mtrs") # 1000 mtrs por defecto
 
         def formato_opcion_dist(dk):
             n = dist_counts.get(dk, 0)
