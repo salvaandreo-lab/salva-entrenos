@@ -349,6 +349,13 @@ def test_08_coros_gzip_laps_y_series_miles():
     _, res = database.clasificar_vueltas_sesion(laps)
     assert res["num_series"] == 5, f"REGRESIÓN clasificación 5x1000m COROS: {res}"
 
+    # 4. Desplegable de Análisis de Series debe incluir 1600 mtrs y auto-sync en apertura para todos los atletas
+    src_app = _leer_archivo("app.py")
+    for marcador in ['"1600 mtrs": (1500, 1700)', "BETWEEN 1500 AND 1700 THEN '1600 mtrs'", '"1600"', "_ejecutar_auto_sync_apertura"]:
+        assert marcador in src_app, f"Falta '{marcador}' en app.py"
+    src_coros = _leer_archivo("coros_sync.py")
+    assert "solo_recientes=(not es_modo_historial)" in src_coros
+
 
 def main():
     tests = [
