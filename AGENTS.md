@@ -63,7 +63,7 @@ Este documento define las reglas estrictas de arquitectura, buenas prácticas y 
 
 ## 7. Conciliación del Planning en Dos Pasadas y Tests en Series
 * **Dos pasadas obligatorias:** `plan_entrenador.conciliar_plan_con_garmin()` empareja primero fechas exactas y después desplazamientos solo sobre entrenos huérfanos; `aplicar_etiquetas_entrenador()` nunca renombra un entreno real a `"Descanso"`.
-* **Tests, COROS laps, 1600m y sesiones de 3 tramos:** `TEST 2 KMS` / `Control` entran en *Análisis de Series* (`2k` → `2000 mtrs`), el desplegable incluye `1600 mtrs` (`1500–1700 m`) y `clasificar_vueltas_sesion()` separa calentamiento/enfriamiento si son $\ge 25\,\text{s/km}$ más lentos que la serie central. `generar_titulo_amigable()` preserva `5x1.000m` → `Series 5x1000m`. En `coros_sync.py`, descomprimir respuestas `gzip`, priorizar `lapList` `type == 2` sobre `type == -1` y convertir cm/cs (`/ 100.0`).
+* **Tests, COROS laps, 1600m y clasificación de vueltas:** `TEST 2 KMS` / `Control` entran en *Análisis de Series* (`2k` → `2000 mtrs`), el desplegable incluye `1600 mtrs` (`1500–1700 m`) y `clasificar_vueltas_sesion()` separa calentamiento inicial suave ($\ge 800\,\text{m}$), enfriamiento y recuperaciones de ~400 m ($\le 450\,\text{m}$) si son $\ge 25\,\text{s/km}$ más lentos que la serie rápida. `generar_titulo_amigable()` preserva `5x1.000m` → `Series 5x1000m`. En `coros_sync.py`, descomprimir respuestas `gzip`, priorizar `lapList` `type == 2` sobre `type == -1` y convertir cm/cs (`/ 100.0`).
 
 ---
 
