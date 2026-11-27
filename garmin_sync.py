@@ -122,6 +122,8 @@ def parsear_archivo_fit(fit_file_path: str) -> Tuple[Dict[str, Any], List[Dict[s
                 lap_data["tipo_intervalo"] = "serie_400m"
             elif 900 <= lap_data["distancia_m"] <= 1100:
                 lap_data["tipo_intervalo"] = "serie_1000m"
+            elif 1500 <= lap_data["distancia_m"] <= 1700:
+                lap_data["tipo_intervalo"] = "serie_1600m"
             elif 1800 <= lap_data["distancia_m"] <= 2200:
                 lap_data["tipo_intervalo"] = "serie_2000m"
 
