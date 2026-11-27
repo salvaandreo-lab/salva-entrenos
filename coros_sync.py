@@ -692,9 +692,15 @@ def sincronizar_actividades_coros(
         except Exception:
             pass
 
-    # Auto-reprocesar laps de actividades recientes o históricas que solo tengan 1 vuelta
+    # Auto-reprocesar laps de actividades recientes que solo tengan 1 vuelta
+    # En sincronización incremental limitar a 5 recientes (últimos 30 días) para no ralentizar cada apertura/cron
     try:
-        reprocesar_laps_actividades_existentes(usuario_id=usuario_id, limite=50)
+        lim_reproc = 50 if es_modo_historial else 5
+        reprocesar_laps_actividades_existentes(
+            usuario_id=usuario_id,
+            limite=lim_reproc,
+            solo_recientes=(not es_modo_historial)
+        )
     except Exception:
         pass
 
@@ -707,7 +713,7 @@ def sincronizar_actividades_coros(
         "total": total_analizadas
     }
 
-def reprocesar_laps_actividades_existentes(usuario_id: int = 8, limite: int = 30) -> Dict[str, Any]:
+def reprocesar_laps_actividades_existentes(usuario_id: int = 8, limite: int = 30, solo_recientes: bool = False) -> Dict[str, Any]:
     """
     Recorre las actividades de un usuario que solo tienen 1 vuelta dummy y consulta
     a COROS para descargar el desglose real de laps y repeticiones de series.
@@ -724,11 +730,12 @@ def reprocesar_laps_actividades_existentes(usuario_id: int = 8, limite: int = 30
     cursor = conn.cursor()
 
     # Buscar entrenamientos con fit_hash de COROS y que solo tengan 1 vuelta
-    query = """
+    filtro_fecha = "AND e.fecha >= date('now', '-30 days')" if solo_recientes else ""
+    query = f"""
     SELECT e.id, e.fit_hash, e.titulo, e.distancia_km, e.tiempo_total_s, e.fecha
     FROM entrenamientos e
     JOIN series_laps s ON s.entrenamiento_id = e.id
-    WHERE e.usuario_id = ? AND e.fit_hash LIKE 'coros_%'
+    WHERE e.usuario_id = ? AND e.fit_hash LIKE 'coros_%' {filtro_fecha}
     GROUP BY e.id
     HAVING COUNT(s.id) <= 1
     ORDER BY e.fecha DESC
